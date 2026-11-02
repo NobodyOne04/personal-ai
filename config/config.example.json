@@ -1,0 +1,27 @@
+{
+  "server": {
+    "addr": ":8080",
+    "read_header_timeout": "10s",
+    "read_timeout": "30s",
+    "idle_timeout": "2m",
+    "shutdown_timeout": "30s",
+    "max_body_bytes": 1048576
+  },
+  "log": { "level": "info", "format": "json" },
+  "scheduling": { "interval": "1m", "idle_timeout": "30m", "max_active": 1 },
+  "routing": { "not_deployed_policy": "reject" },
+  "telegram": { "allowed_user_ids": [] },
+  "default_model": "example-model",
+  "models": [
+    {
+      "id": "example-model",
+      "name": "Example Model",
+      "artifact": "organization/model-name",
+      "description": "Replace with a real model.",
+      "features": ["chat"],
+      "requirements": { "min_vram_gb": 24, "recommended_vram_gb": 32, "min_gpu_count": 1 },
+      "runtime": { "context_length": 8192, "max_model_len": 8192, "dtype": "auto" },
+      "generation": { "temperature": 0.7, "top_p": 0.9, "max_tokens": 2048 }
+    }
+  ]
+}
