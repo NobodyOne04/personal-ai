@@ -1,6 +1,7 @@
 package scheduling
 
 import (
+	"context"
 	"reflect"
 	"testing"
 	"time"
@@ -121,5 +122,72 @@ func TestPlanWorksWithActivityTracker(t *testing.T) {
 	plan := PlanActions(deps, t0.Add(time.Hour), Policy{IdleTimeout: time.Minute, MaxActive: 2}, a.Active)
 	if !reflect.DeepEqual(plan.StopIdle, []deployment.ID{"quiet"}) {
 		t.Fatalf("StopIdle = %v, want only quiet", plan.StopIdle)
+	}
+}
+
+// ---- Scheduler.Tick ----
+
+type fakeExec struct {
+	deps    map[deployment.ID]deployment.Deployment
+	active  map[deployment.ID]int
+	stopped []deployment.ID
+	checked int
+}
+
+func (f *fakeExec) List(context.Context) ([]deployment.Deployment, error) {
+	out := []deployment.Deployment{}
+	for _, d := range f.deps {
+		out = append(out, d)
+	}
+	return out, nil
+}
+func (f *fakeExec) StopIfIdle(_ context.Context, id deployment.ID, _ time.Duration) (bool, error) {
+	if f.active[id] > 0 {
+		return false, nil
+	}
+	f.stopped = append(f.stopped, id)
+	return true, nil
+}
+func (f *fakeExec) Stop(_ context.Context, id deployment.ID) (deployment.Deployment, error) {
+	f.stopped = append(f.stopped, id)
+	return f.deps[id], nil
+}
+func (f *fakeExec) CheckHealth(_ context.Context, id deployment.ID) (deployment.Deployment, error) {
+	f.checked++
+	return f.deps[id], nil
+}
+func (f *fakeExec) ActiveRequests(id deployment.ID) int { return f.active[id] }
+
+type fixedClock time.Time
+
+func (c fixedClock) Now() time.Time { return time.Time(c) }
+
+func TestTick(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	mk := func(id string, st deployment.Status, lastActive time.Time) deployment.Deployment {
+		return deployment.Deployment{ID: deployment.ID(id), Status: st, LastActivityAt: lastActive}
+	}
+	inst := compute.InstanceID("i")
+	failed := mk("failed", deployment.Failed, now)
+	failed.InstanceID = &inst
+	exec := &fakeExec{
+		deps: map[deployment.ID]deployment.Deployment{
+			"idle":   mk("idle", deployment.Ready, now.Add(-time.Hour)),
+			"fresh":  mk("fresh", deployment.Ready, now.Add(-time.Minute)),
+			"busy":   mk("busy", deployment.Ready, now.Add(-time.Hour)),
+			"failed": failed,
+		},
+		active: map[deployment.ID]int{"busy": 1},
+	}
+	s, err := NewScheduler(exec, Policy{IdleTimeout: 30 * time.Minute, MaxActive: 3}, fixedClock(now), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := s.Tick(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HealthChecked != 3 || len(res.Stopped) != 1 || res.Stopped[0] != "idle" || len(res.CleanedUp) != 1 || res.CleanedUp[0] != "failed" {
+		t.Fatalf("result = %+v", res)
 	}
 }

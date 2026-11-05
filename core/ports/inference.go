@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"errors"
 
 	"personal-ai/core/domain/compute"
 	"personal-ai/core/domain/inference"
@@ -17,17 +18,25 @@ type RuntimeTarget struct {
 
 // PrepareSpec is the input to InferenceRuntime.Prepare.
 type PrepareSpec struct {
-	Model model.Model
+	// DeploymentID lets the runtime derive per-deployment settings such as a
+	// credential protecting the runtime's port.
+	DeploymentID string
+	Model        model.Model
 	// Overrides replace the model's runtime settings for this deployment.
 	Overrides map[string]any
 }
 
 // InitSpec is the input to InferenceRuntime.Initialize.
 type InitSpec struct {
-	Model     model.Model
-	Instance  compute.Instance
-	Overrides map[string]any
+	DeploymentID string
+	Model        model.Model
+	Instance     compute.Instance
+	Overrides    map[string]any
 }
+
+// ErrRuntimeUnavailable means the runtime could not be reached or is not
+// serving yet. Callers may retry later.
+var ErrRuntimeUnavailable = errors.New("inference runtime unavailable")
 
 // RuntimeHealth is a runtime's reported state.
 type RuntimeHealth struct {

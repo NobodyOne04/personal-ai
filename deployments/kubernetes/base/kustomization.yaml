@@ -1,0 +1,20 @@
+# Base: the API server only. Add components for in-cluster PostgreSQL and the
+# Telegram bot; provide secrets from an overlay (see ../overlays).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: personal-ai
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: personal-ai
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - server.yaml
+configMapGenerator:
+  - name: personal-ai-config
+    files:
+      - config.json
+images:
+  - name: personal-ai
+    newName: personal-ai
+    newTag: dev

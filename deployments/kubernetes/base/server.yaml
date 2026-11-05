@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: personal-ai-server
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: personal-ai-server
+  labels:
+    app.kubernetes.io/name: personal-ai-server
+spec:
+  selector:
+    app.kubernetes.io/name: personal-ai-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: personal-ai-server
+  labels:
+    app.kubernetes.io/name: personal-ai-server
+spec:
+  # Exactly one replica, replaced with Recreate: the server owns the scheduler,
+  # the startup reconciler and the in-memory in-flight request counts
+  # (ARCHITECTURE.md §6a, A4/A5). Two copies would race each other.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: personal-ai-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: personal-ai-server
+    spec:
+      serviceAccountName: personal-ai-server
+      automountServiceAccountToken: false
+      # Longer than server.shutdown_timeout so streams can drain.
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: personal-ai
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/server"]
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PERSONAL_AI_CONFIG
+              value: /etc/personal-ai/config.json
+            - name: PERSONAL_AI_DATABASE_URL
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_DATABASE_URL } }
+            - name: PERSONAL_AI_MANAGEMENT_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_MANAGEMENT_TOKEN } }
+            - name: PERSONAL_AI_INFERENCE_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_INFERENCE_TOKEN } }
+            - name: PERSONAL_AI_RUNPOD_API_KEY
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_RUNPOD_API_KEY } }
+            - name: PERSONAL_AI_RUNTIME_KEY_SECRET
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_RUNTIME_KEY_SECRET } }
+            - name: PERSONAL_AI_HF_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_HF_TOKEN, optional: true } }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/personal-ai/config.json
+              subPath: config.json
+              readOnly: true
+          # The server listens only after migrations and reconciliation, so
+          # /healthz doubles as readiness. Startup may take a while when it has
+          # to clean up compute after a crash.
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 20
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: personal-ai-config

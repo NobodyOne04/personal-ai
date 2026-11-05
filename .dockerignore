@@ -1,0 +1,8 @@
+.git
+bin/
+deployments/
+.ipynb_checkpoints/
+*.ipynb
+test.txt
+**/*.env
+**/secrets.env

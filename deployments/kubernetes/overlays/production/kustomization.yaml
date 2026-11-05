@@ -1,0 +1,23 @@
+# Production: external (managed) PostgreSQL, image from a registry, Telegram
+# bot enabled, HTTPS via an Ingress. Adjust image, host and config first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: personal-ai
+resources:
+  - ../../base
+  - ingress.yaml
+components:
+  - ../../components/telegram
+secretGenerator:
+  - name: personal-ai-secrets
+    envs:
+      - secrets.env
+configMapGenerator:
+  - name: personal-ai-config
+    behavior: replace
+    files:
+      - config.json
+images:
+  - name: personal-ai
+    newName: ghcr.io/your-org/personal-ai
+    newTag: "0.1.0"

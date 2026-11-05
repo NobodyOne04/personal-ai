@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: personal-ai-telegram
+  labels:
+    app.kubernetes.io/name: personal-ai-telegram
+spec:
+  # One replica: Telegram long polling delivers each update to one poller,
+  # and two pollers would conflict. Recreate avoids an overlap on rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: personal-ai-telegram
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: personal-ai-telegram
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: telegram
+          image: personal-ai
+          imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/telegram"]
+          # Reaches the platform only through the REST API: no database or
+          # RunPod credentials here.
+          env:
+            - name: PERSONAL_AI_CONFIG
+              value: /etc/personal-ai/config.json
+            - name: PERSONAL_AI_TELEGRAM_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_TELEGRAM_TOKEN } }
+            - name: PERSONAL_AI_INFERENCE_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_INFERENCE_TOKEN } }
+            # Optional: enables /deploy, /stop and /status.
+            - name: PERSONAL_AI_MANAGEMENT_TOKEN
+              valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_MANAGEMENT_TOKEN, optional: true } }
+          volumeMounts:
+            - name: config
+              mountPath: /etc/personal-ai/config.json
+              subPath: config.json
+              readOnly: true
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: personal-ai-config

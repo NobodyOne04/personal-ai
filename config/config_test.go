@@ -167,11 +167,19 @@ func goodSecrets() map[string]string {
 		EnvDatabaseURL:     "postgres://user:pw@db/app",
 		EnvManagementToken: strings.Repeat("m", MinTokenLength),
 		EnvInferenceToken:  strings.Repeat("i", MinTokenLength),
+		EnvRunPodAPIKey:    "rpa_key",
+		EnvRuntimeKey:      strings.Repeat("r", MinTokenLength),
 	}
 }
 
+const offeringsJSON = `{"compute":{"runpod":{"offerings":[{"id":"a40","gpu_type_id":"NVIDIA A40","gpu_count":1,"vram_per_gpu_gb":48,"hourly_usd":0.4}]}}}`
+
 func TestValidateForServer(t *testing.T) {
-	cfg, err := Load("", env(goodSecrets()))
+	withOfferings := writeFile(t, offeringsJSON)
+	if c, _ := Load("", env(goodSecrets())); c.ValidateForServer() == nil {
+		t.Fatal("server must require approved offerings")
+	}
+	cfg, err := Load(withOfferings, env(goodSecrets()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,12 +192,14 @@ func TestValidateForServer(t *testing.T) {
 		"short management":  func(m map[string]string) { m[EnvManagementToken] = "short" },
 		"missing inference": func(m map[string]string) { delete(m, EnvInferenceToken) },
 		"identical tokens":  func(m map[string]string) { m[EnvInferenceToken] = m[EnvManagementToken] },
+		"missing runpod":    func(m map[string]string) { delete(m, EnvRunPodAPIKey) },
+		"short runtime key": func(m map[string]string) { m[EnvRuntimeKey] = "short" },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			secrets := goodSecrets()
 			mutate(secrets)
-			c, err := Load("", env(secrets))
+			c, err := Load(withOfferings, env(secrets))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -214,6 +224,10 @@ func TestValidateForTelegram(t *testing.T) {
 		t.Fatal("invalid user id must be rejected")
 	}
 	c.Telegram.AllowedUserIDs = []int64{12345}
+	if err := c.ValidateForTelegram(); err == nil {
+		t.Fatal("the bot needs an inference token to reach the API")
+	}
+	c.Secrets.InferenceToken = "inf"
 	if err := c.ValidateForTelegram(); err != nil {
 		t.Fatal(err)
 	}
@@ -247,5 +261,31 @@ func TestSecretsCannotBeLoadedFromFile(t *testing.T) {
 	p := writeFile(t, `{"Secrets":{"RunPodAPIKey":"from-file"}}`)
 	if _, err := Load(p, env(nil)); err == nil {
 		t.Fatal("secrets in the config file must be rejected, not silently accepted")
+	}
+}
+
+// The configs shipped with the Kubernetes manifests must stay loadable and,
+// with secrets supplied, acceptable to the server.
+func TestKubernetesConfigsAreValid(t *testing.T) {
+	for _, path := range []string{
+		"../deployments/kubernetes/base/config.json",
+		"../deployments/kubernetes/overlays/production/config.json",
+	} {
+		t.Run(path, func(t *testing.T) {
+			secrets := goodSecrets()
+			secrets[EnvTelegramToken] = "tg"
+			cfg, err := Load(path, env(secrets))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cfg.ValidateForServer(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+	cfg, _ := Load("../deployments/kubernetes/overlays/production/config.json", env(map[string]string{
+		EnvTelegramToken: "tg", EnvInferenceToken: "inf"}))
+	if err := cfg.ValidateForTelegram(); err != nil {
+		t.Fatalf("production config must be usable by the bot: %v", err)
 	}
 }

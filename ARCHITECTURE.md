@@ -1,8 +1,9 @@
 # personal-ai — Architecture Proposal
 
-Status: **Phase 1 (Foundation) implemented.** The design below was proposed first; open questions were then
-resolved by the project owner delegating the call (see §6a). Where the code differs from the proposal text in
-§3–§7, §6a is authoritative and lists each difference.
+Status: **Phases 1–8 implemented** (foundation, persistence, RunPod, vLLM, deployment orchestration, REST +
+OpenAI-compatible API, scheduling/usage, CLI + Telegram). The design below was proposed first; open questions were
+then resolved by the project owner delegating the call (see §6a, §6b). Where the code differs from the proposal
+text in §3–§7, §6a and §6b are authoritative and list each difference.
 Workspace state when the design was written: empty (greenfield).
 
 > The Core owns the business rules. Adapters own the technology. `cmd/` owns the wiring.
@@ -266,6 +267,29 @@ Prompts and generated text are intentionally **not** stored.
 
 Fakes for every port live in `internal/testing/fakes` (or per-package `_test` helpers), including a fake compute provider that can inject delays/failures and a fake runtime that streams scripted chunks. Domain transition table is tested exhaustively (table-driven). Orchestration failure paths (provision ok → init fails → cleanup, cleanup fails → retained) are unit tests. Import-boundary check runs as a test (`go list -deps`) so the dependency rules in §1 are enforced automatically.
 
-## 10. Next Step
+## 6b. Decisions taken in Phases 2–8
 
-Phase 2: PostgreSQL adapter, migrations, repositories and the model/deployment management use cases. **Blocker to resolve first:** a PostgreSQL driver (for example `pgx`) and a migration tool are third-party modules, and the sandbox currently cannot fetch Go modules (`proxy.golang.org` is denied by policy). Either allow that host, vendor the modules into the repository, or implement Phase 2 against `database/sql` with a driver supplied from outside the sandbox.
+| Area | Decision |
+|---|---|
+| Persistence | `pgx/v5` with a small embedded migration runner (`postgres.Migrate`, advisory-locked, one transaction per file) instead of `golang-migrate`. The catalog table is `model_catalog`; generation defaults are columns, not JSONB. `compute_instances` remains deferred (deviation 2 holds: reconciliation works from instance labels). |
+| Ports | `DeploymentRepository` gained `RecordActivity` (moves `last_activity_at` forward without taking part in optimistic locking, so concurrent requests never conflict with lifecycle updates) and `Delete`. `PrepareSpec`/`InitSpec` carry `DeploymentID`. `ports.ErrRuntimeUnavailable` added. |
+| RunPod | REST v1 via `net/http`. Hardware **offerings are declared in config** (`compute.runpod.offerings`), not discovered: nothing the operator has not approved is ever provisioned. Idempotency = pod name `<prefix><idempotency key>` looked up before create; labels travel as `PAI_LABEL_*` env vars. Endpoint = RunPod HTTPS proxy. `EXITED` pods map to `failed` so they are cleaned up. |
+| vLLM / A2 | Per-deployment runtime key = HMAC-SHA256(`PERSONAL_AI_RUNTIME_KEY_SECRET`, deployment ID), passed as `VLLM_API_KEY` env. No runtime credential is stored anywhere. The runtime ref holds only deployment ID + served model name. |
+| Orchestration | Every status change goes through a reload→mutate→save loop with optimistic locking; a launch and a concurrent stop cannot overwrite each other. `Create` returns the Pending record (HTTP 202) and launches in the background. A launch interrupted between "provider created the pod" and "ID persisted" is caught by a label sweep (`releaseUnattached`). Restart rotates the idempotency key. Uptime usage is recorded when compute is released (not per tick), costed from the instance's hourly rate, unknown if absent. |
+| Reconciliation | Pending → relaunched; mid-launch → Failed("interrupted by restart") then released; Stopping / Failed-with-instance → stop retried; Ready whose instance vanished → stopped; unreferenced platform instances → terminated. Failures are logged, not fatal. |
+| Inference | New package `core/application/inference` (`inferenceapp`). Routing picks the least recently used Ready deployment. Under `reject`, a model that is already starting yields `model_starting` (503 + Retry-After) rather than `model_not_deployed`. Streams record usage as completed / failed / interrupted. |
+| Scheduling | `scheduling.Scheduler.Tick` health-checks serving deployments, stops idle ones via `StopIfIdle` (the idle check is repeated inside the optimistic update, so an arriving request is never cut off), and retries cleanup of failed ones. |
+| REST | stdlib `net/http`. Two bearer scopes compared as SHA-256 digests in constant time. Deployment responses never include endpoints or credentials. Error codes are stable strings (`model_not_deployed`, `deployment_limit_reached`, …). |
+| Clients / A3 | Wire types live in `internal/apitypes` (stdlib only) and are shared by the server and `internal/apiclient`, which the CLI and Telegram bot both use. Telegram uses the Bot API directly (no library), ignores non-allowlisted users silently, keeps per-chat history in memory only, sends plain text. Management commands are enabled only if the bot holds a management token. |
+| Secrets | New env-only secrets: `PERSONAL_AI_RUNTIME_KEY_SECRET` (required, ≥ 24 chars), `PERSONAL_AI_HF_TOKEN` (optional); `PERSONAL_AI_RUNPOD_API_KEY` is now required by the server. `PERSONAL_AI_API_URL` overrides `client.api_url`. |
+| Seeding / A10 | Implemented: config models are inserted if absent; `server -sync-models` overwrites. `default_model` from config is applied only when no default is stored. |
+
+## 10. Running and Next Steps
+
+- `make test` runs unit tests; `make test-integration` starts a disposable PostgreSQL in Docker and also runs the
+  repository tests and a full server boot (each test uses its own schema).
+- Not yet verified against live RunPod/vLLM: the adapters are tested against faithful HTTP stubs. Before first real
+  use, deploy one small model with a low `max_active` and watch the logs.
+- Possible follow-ups: YAML config loader (now that modules can be fetched), periodic orphan sweep (today only at
+  startup and on interrupted launches), a `compute_instances` table if billing reconciliation needs it, and the
+  reserved `adapters/inbound/web` UI.

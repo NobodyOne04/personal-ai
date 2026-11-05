@@ -25,6 +25,11 @@ var rules = []rule{
 	{prefix: "adapters/outbound", allowInternal: []string{"core/domain", "core/ports", "internal"}, allowThirdParty: true},
 	{prefix: "config", allowInternal: []string{"core/domain"}, allowThirdParty: true},
 	{prefix: "internal/logging", allowInternal: nil, allowThirdParty: true},
+	// The wire contract and its client depend on nothing in the platform, so
+	// clients never pull in the Core or any adapter.
+	{prefix: "internal/apitypes", allowInternal: nil},
+	{prefix: "internal/apiclient", allowInternal: []string{"internal/apitypes"}},
+	{prefix: "internal/testing", allowInternal: []string{"core/domain", "core/ports"}},
 }
 
 func hasPathPrefix(path, prefix string) bool {
@@ -103,6 +108,11 @@ func TestViolationRules(t *testing.T) {
 		{"config imports application", "config", "core/application/scheduling", true},
 		{"anything imports cmd", "adapters/inbound/rest", "cmd/server", true},
 		{"cmd may import adapters", "cmd/server", "adapters/inbound/rest", false},
+		{"apitypes stays stdlib only", "internal/apitypes", "core/domain/model", true},
+		{"apiclient imports apitypes", "internal/apiclient", "internal/apitypes", false},
+		{"apiclient imports core", "internal/apiclient", "core/application/model", true},
+		{"fakes import ports", "internal/testing/fakes", "core/ports", false},
+		{"fakes import adapters", "internal/testing/fakes", "adapters/outbound/persistence/postgres", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

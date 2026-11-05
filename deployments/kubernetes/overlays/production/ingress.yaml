@@ -1,0 +1,28 @@
+# HTTPS entry point. Streaming responses need proxy buffering off and long
+# read timeouts (shown for ingress-nginx; adapt for other controllers).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: personal-ai
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    cert-manager.io/cluster-issuer: letsencrypt
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [ai.example.com]
+      secretName: personal-ai-tls
+  rules:
+    - host: ai.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: personal-ai-server
+                port:
+                  name: http

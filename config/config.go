@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -33,6 +34,9 @@ const (
 	EnvInferenceToken  = "PERSONAL_AI_INFERENCE_TOKEN"
 	EnvRunPodAPIKey    = "PERSONAL_AI_RUNPOD_API_KEY"
 	EnvTelegramToken   = "PERSONAL_AI_TELEGRAM_TOKEN"
+	EnvRuntimeKey      = "PERSONAL_AI_RUNTIME_KEY_SECRET"
+	EnvHFToken         = "PERSONAL_AI_HF_TOKEN"
+	EnvAPIURL          = "PERSONAL_AI_API_URL"
 )
 
 // MinTokenLength is the shortest accepted API token.
@@ -64,6 +68,10 @@ type Config struct {
 	Scheduling   SchedulingConfig `json:"scheduling" yaml:"scheduling"`
 	Routing      RoutingConfig    `json:"routing" yaml:"routing"`
 	Telegram     TelegramConfig   `json:"telegram" yaml:"telegram"`
+	Compute      ComputeConfig    `json:"compute" yaml:"compute"`
+	Deployment   DeploymentConfig `json:"deployment" yaml:"deployment"`
+	Runtime      RuntimeConfig    `json:"runtime" yaml:"runtime"`
+	Client       ClientConfig     `json:"client" yaml:"client"`
 	DefaultModel string           `json:"default_model" yaml:"default_model"`
 	Models       []ModelConfig    `json:"models" yaml:"models"`
 
@@ -106,6 +114,56 @@ const (
 // RoutingConfig configures model routing.
 type RoutingConfig struct {
 	NotDeployedPolicy string `json:"not_deployed_policy" yaml:"not_deployed_policy"`
+	// WaitTimeout bounds how long a request waits for a deployment under the
+	// start_and_wait policy.
+	WaitTimeout Duration `json:"wait_timeout" yaml:"wait_timeout"`
+}
+
+// ComputeConfig configures the compute provider. Only RunPod exists today.
+type ComputeConfig struct {
+	RunPod RunPodConfig `json:"runpod" yaml:"runpod"`
+}
+
+// RunPodConfig configures the RunPod adapter. Offerings are the hardware the
+// operator approves; nothing else is ever provisioned.
+type RunPodConfig struct {
+	BaseURL         string           `json:"base_url" yaml:"base_url"`
+	CloudType       string           `json:"cloud_type" yaml:"cloud_type"`
+	NamePrefix      string           `json:"name_prefix" yaml:"name_prefix"`
+	ContainerDiskGB int              `json:"container_disk_gb" yaml:"container_disk_gb"`
+	VolumeGB        int              `json:"volume_gb" yaml:"volume_gb"`
+	Offerings       []OfferingConfig `json:"offerings" yaml:"offerings"`
+}
+
+// OfferingConfig is one approved hardware configuration.
+type OfferingConfig struct {
+	ID           string  `json:"id" yaml:"id"`
+	GPUTypeID    string  `json:"gpu_type_id" yaml:"gpu_type_id"`
+	GPUCount     int     `json:"gpu_count" yaml:"gpu_count"`
+	VRAMPerGPUGB int     `json:"vram_per_gpu_gb" yaml:"vram_per_gpu_gb"`
+	CPUCores     int     `json:"cpu_cores" yaml:"cpu_cores"`
+	MemoryGB     int     `json:"memory_gb" yaml:"memory_gb"`
+	HourlyUSD    float64 `json:"hourly_usd" yaml:"hourly_usd"`
+}
+
+// DeploymentConfig tunes deployment orchestration.
+type DeploymentConfig struct {
+	ProvisionTimeout Duration `json:"provision_timeout" yaml:"provision_timeout"`
+	ReadyTimeout     Duration `json:"ready_timeout" yaml:"ready_timeout"`
+	PollInterval     Duration `json:"poll_interval" yaml:"poll_interval"`
+	StorageGB        int      `json:"storage_gb" yaml:"storage_gb"`
+}
+
+// RuntimeConfig configures the inference runtime adapter.
+type RuntimeConfig struct {
+	Image string `json:"image" yaml:"image"`
+}
+
+// ClientConfig configures the CLI and Telegram bot, which reach the platform
+// through the REST API.
+type ClientConfig struct {
+	APIURL  string   `json:"api_url" yaml:"api_url"`
+	Timeout Duration `json:"timeout" yaml:"timeout"`
 }
 
 // TelegramConfig configures the Telegram bot. The allowlist is mandatory.
@@ -121,6 +179,10 @@ type Secrets struct {
 	InferenceToken  string
 	RunPodAPIKey    string
 	TelegramToken   string
+	// RuntimeKeySecret derives per-deployment runtime API keys.
+	RuntimeKeySecret string
+	// HFToken lets runtimes download gated models. Optional.
+	HFToken string
 }
 
 const redacted = "[REDACTED]"
@@ -151,7 +213,14 @@ func Defaults() Config {
 			IdleTimeout: Duration(30 * time.Minute),
 			MaxActive:   1,
 		},
-		Routing: RoutingConfig{NotDeployedPolicy: PolicyReject},
+		Routing: RoutingConfig{NotDeployedPolicy: PolicyReject, WaitTimeout: Duration(20 * time.Minute)},
+		Compute: ComputeConfig{RunPod: RunPodConfig{CloudType: "SECURE", NamePrefix: "pai-", ContainerDiskGB: 50}},
+		Deployment: DeploymentConfig{
+			ProvisionTimeout: Duration(15 * time.Minute),
+			ReadyTimeout:     Duration(30 * time.Minute),
+			PollInterval:     Duration(10 * time.Second),
+		},
+		Client: ClientConfig{APIURL: "http://localhost:8080", Timeout: Duration(10 * time.Minute)},
 	}
 }
 
@@ -199,12 +268,17 @@ func (c *Config) applyEnv(getenv func(string) string) {
 	if v := getenv(EnvLogFormat); v != "" {
 		c.Log.Format = v
 	}
+	if v := getenv(EnvAPIURL); v != "" {
+		c.Client.APIURL = v
+	}
 	c.Secrets = Secrets{
-		DatabaseURL:     getenv(EnvDatabaseURL),
-		ManagementToken: getenv(EnvManagementToken),
-		InferenceToken:  getenv(EnvInferenceToken),
-		RunPodAPIKey:    getenv(EnvRunPodAPIKey),
-		TelegramToken:   getenv(EnvTelegramToken),
+		DatabaseURL:      getenv(EnvDatabaseURL),
+		ManagementToken:  getenv(EnvManagementToken),
+		InferenceToken:   getenv(EnvInferenceToken),
+		RunPodAPIKey:     getenv(EnvRunPodAPIKey),
+		TelegramToken:    getenv(EnvTelegramToken),
+		RuntimeKeySecret: getenv(EnvRuntimeKey),
+		HFToken:          getenv(EnvHFToken),
 	}
 }
 
@@ -217,12 +291,17 @@ func (c Config) Validate() error {
 		add("server.addr is required")
 	}
 	for name, d := range map[string]Duration{
-		"server.read_header_timeout": c.Server.ReadHeaderTimeout,
-		"server.read_timeout":        c.Server.ReadTimeout,
-		"server.idle_timeout":        c.Server.IdleTimeout,
-		"server.shutdown_timeout":    c.Server.ShutdownTimeout,
-		"scheduling.interval":        c.Scheduling.Interval,
-		"scheduling.idle_timeout":    c.Scheduling.IdleTimeout,
+		"server.read_header_timeout":   c.Server.ReadHeaderTimeout,
+		"server.read_timeout":          c.Server.ReadTimeout,
+		"server.idle_timeout":          c.Server.IdleTimeout,
+		"server.shutdown_timeout":      c.Server.ShutdownTimeout,
+		"scheduling.interval":          c.Scheduling.Interval,
+		"scheduling.idle_timeout":      c.Scheduling.IdleTimeout,
+		"routing.wait_timeout":         c.Routing.WaitTimeout,
+		"deployment.provision_timeout": c.Deployment.ProvisionTimeout,
+		"deployment.ready_timeout":     c.Deployment.ReadyTimeout,
+		"deployment.poll_interval":     c.Deployment.PollInterval,
+		"client.timeout":               c.Client.Timeout,
 	} {
 		if d <= 0 {
 			add("%s must be positive", name)
@@ -253,6 +332,31 @@ func (c Config) Validate() error {
 			c.Routing.NotDeployedPolicy, PolicyReject, PolicyStartAndWait, PolicyStartAndReturnPend)
 	}
 
+	if c.Deployment.StorageGB < 0 {
+		add("deployment.storage_gb must not be negative")
+	}
+	switch c.Compute.RunPod.CloudType {
+	case "SECURE", "COMMUNITY":
+	default:
+		add("compute.runpod.cloud_type %q must be SECURE or COMMUNITY", c.Compute.RunPod.CloudType)
+	}
+	seenOffering := map[string]bool{}
+	for i, o := range c.Compute.RunPod.Offerings {
+		if o.ID == "" || o.GPUTypeID == "" || o.GPUCount < 1 || o.VRAMPerGPUGB < 1 {
+			add("compute.runpod.offerings[%d] needs id, gpu_type_id, gpu_count >= 1 and vram_per_gpu_gb >= 1", i)
+		}
+		if o.HourlyUSD < 0 {
+			add("compute.runpod.offerings[%d].hourly_usd must not be negative", i)
+		}
+		if seenOffering[o.ID] {
+			add("compute.runpod.offerings[%d]: duplicate id %q", i, o.ID)
+		}
+		seenOffering[o.ID] = true
+	}
+	if u, err := url.Parse(c.Client.APIURL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		add("client.api_url %q must be an http(s) URL", c.Client.APIURL)
+	}
+
 	if _, err := c.DomainModels(); err != nil {
 		errs = append(errs, err)
 	}
@@ -277,6 +381,15 @@ func (c Config) ValidateForServer() error {
 	if c.Secrets.ManagementToken != "" && c.Secrets.ManagementToken == c.Secrets.InferenceToken {
 		errs = append(errs, errors.New("management and inference tokens must differ"))
 	}
+	if c.Secrets.RunPodAPIKey == "" {
+		errs = append(errs, fmt.Errorf("%s is required", EnvRunPodAPIKey))
+	}
+	if len(c.Secrets.RuntimeKeySecret) < MinTokenLength {
+		errs = append(errs, fmt.Errorf("%s must be set to at least %d characters", EnvRuntimeKey, MinTokenLength))
+	}
+	if len(c.Compute.RunPod.Offerings) == 0 {
+		errs = append(errs, errors.New("compute.runpod.offerings must list at least one approved hardware configuration"))
+	}
 	return errors.Join(errs...)
 }
 
@@ -294,6 +407,9 @@ func (c Config) ValidateForTelegram() error {
 		if id <= 0 {
 			errs = append(errs, fmt.Errorf("telegram.allowed_user_ids contains invalid id %d", id))
 		}
+	}
+	if c.Secrets.InferenceToken == "" {
+		errs = append(errs, fmt.Errorf("%s is required to chat through the API", EnvInferenceToken))
 	}
 	return errors.Join(errs...)
 }

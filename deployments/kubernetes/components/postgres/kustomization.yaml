@@ -1,0 +1,6 @@
+# In-cluster PostgreSQL for small or local installs. For production prefer a
+# managed database and leave this component out.
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
+resources:
+  - postgres.yaml

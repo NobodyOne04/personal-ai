@@ -1,0 +1,19 @@
+# Local cluster (minikube, kind, Docker Desktop): in-cluster PostgreSQL and a
+# locally built image. Create secrets.env from secrets.env.example first.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: personal-ai
+resources:
+  - ../../base
+components:
+  - ../../components/postgres
+  # Uncomment after filling in telegram.allowed_user_ids and the bot token:
+  # - ../../components/telegram
+secretGenerator:
+  - name: personal-ai-secrets
+    envs:
+      - secrets.env
+images:
+  - name: personal-ai
+    newName: personal-ai
+    newTag: dev

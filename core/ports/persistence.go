@@ -2,6 +2,7 @@ package ports
 
 import (
 	"context"
+	"time"
 
 	"personal-ai/core/domain/deployment"
 	"personal-ai/core/domain/model"
@@ -31,6 +32,12 @@ type DeploymentRepository interface {
 	List(ctx context.Context) ([]deployment.Deployment, error)
 	ListByStatus(ctx context.Context, statuses ...deployment.Status) ([]deployment.Deployment, error)
 	ListByModel(ctx context.Context, id model.ID) ([]deployment.Deployment, error)
+	// RecordActivity moves LastActivityAt forward to at (never backwards)
+	// without taking part in optimistic locking, so concurrent inference
+	// requests do not conflict with lifecycle updates. Returns ErrNotFound.
+	RecordActivity(ctx context.Context, id deployment.ID, at time.Time) error
+	// Delete removes a deployment record. Returns ErrNotFound.
+	Delete(ctx context.Context, id deployment.ID) error
 }
 
 // UsageRepository stores usage records.

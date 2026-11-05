@@ -1,7 +1,5 @@
-// Package modelapp will hold the model-management use cases (register,
-// update, deactivate, list, get, validate requirements, default model).
-//
-// They are implemented in Phase 2, together with the persistence adapter they
-// depend on. The package exists now so that the dependency rules are enforced
-// from the first commit.
+// Package modelapp holds the model-management use cases: register, update,
+// activate/deactivate, list, get, validate requirements against offered
+// compute, the per-subject default model, and seeding the catalog from
+// configuration.
 package modelapp
