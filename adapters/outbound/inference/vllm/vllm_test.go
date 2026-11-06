@@ -18,7 +18,7 @@ import (
 	"personal-ai/core/ports"
 )
 
-const secret = "0123456789abcdef0123456789abcdef"
+const secret = "0123456789abcdef0123456789abcdef" // gitleaks:allow (fake test key)
 
 func testModel() model.Model {
 	return model.Model{ID: "m1", Name: "M", Artifact: "org/m1",

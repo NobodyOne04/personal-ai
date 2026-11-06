@@ -1,0 +1,3 @@
+# Known false positives for gitleaks (fake keys in tests). One fingerprint per line.
+# vllm_test.go: constant test key "0123456789abcdef..."
+e0e4000ccc767223a72c4d85a809b1959be79e9e:adapters/outbound/inference/vllm/vllm_test.go:generic-api-key:21

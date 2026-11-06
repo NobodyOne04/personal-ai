@@ -16,7 +16,7 @@ TEST_DB_CONTAINER ?= personal-ai-test-pg
 TEST_DB_PORT      ?= 55432
 TEST_DB_URL       ?= postgres://postgres:test@localhost:$(TEST_DB_PORT)/pai?sslmode=disable
 
-.PHONY: help build test test-integration cover vet fmt check tidy clean \
+.PHONY: help build test test-integration cover vet fmt check leaks tidy clean \
         db-up db-down run-server run-telegram \
         docker-build docker-push \
         k8s-secrets k8s-render k8s-apply k8s-delete k8s-status k8s-logs k8s-port-forward \
@@ -47,10 +47,16 @@ vet: ## go vet
 fmt: ## Format all Go code
 	gofmt -l -w .
 
-check: ## Formatting, vet and tests (what CI should run)
+check: ## Formatting, vet, tests and secret scan (what CI runs)
 	@test -z "$$(gofmt -l .)" || (echo "gofmt needed:"; gofmt -l .; exit 1)
 	go vet ./...
 	go test -race ./...
+	@$(MAKE) --no-print-directory leaks
+
+leaks: ## Scan git history and working tree for committed secrets (gitleaks)
+	@command -v gitleaks >/dev/null || { echo "gitleaks is not installed (brew install gitleaks)"; exit 1; }
+	gitleaks git --redact --no-banner .
+	gitleaks dir --redact --no-banner .
 
 tidy: ## go mod tidy
 	go mod tidy
