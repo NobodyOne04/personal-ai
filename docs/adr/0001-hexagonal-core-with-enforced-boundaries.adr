@@ -3,24 +3,41 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Accepted by the owner on 2026-11-11.
+Accepted by the owner on 2026-11-11: business rules sit in a stdlib-only core behind ports,
+adapters plug in from outside, and a test fails the build on any forbidden import.
 
-## Context
-The platform talks to several replaceable technologies (RunPod, vLLM, PostgreSQL, Telegram, HTTP). Business rules (deployment lifecycle, idle scheduling, cost accounting) must stay testable without any of them.
+## Technical details
+- **Problem**: the platform talks to several replaceable technologies (RunPod, vLLM,
+  PostgreSQL, Telegram, HTTP). Business rules (deployment lifecycle, idle scheduling, cost
+  accounting) must stay testable without any of them.
+- **Layers** (ARCHITECTURE.md §1):
+  - `core/domain/{compute,deployment,inference,model,usage}`: types and rules, stdlib only,
+    no I/O.
+  - `core/ports`: interfaces the core needs (`clock`, `compute`, `events`, `inference`,
+    `persistence`).
+  - `core/application/{deployment,inference,model,scheduling}`: use cases orchestrating
+    domain and ports.
+  - `adapters/inbound/{rest,telegram,cli}` drive the core; `adapters/outbound/{compute/runpod,
+    inference/vllm,persistence/postgres,messaging}` implement ports.
+  - `cmd/{server,telegram,cli}`: wiring only; the only place that reads `config/`.
+- **Enforcement**: `internal/archtest/boundaries_test.go` runs `go list` on every package and
+  checks each import against a rule table (module-relative prefixes):
+  - `core/domain` → only `core/domain`; `core/ports` → `core/domain`;
+    `core/application` → domain, ports, application; none of them third-party.
+  - `adapters/inbound` → core + `internal`; `adapters/outbound` → domain, ports, `internal`
+    (not `core/application`); both may use third-party modules.
+  - `config` → `core/domain`; `internal/apitypes` → nothing; `internal/apiclient` →
+    `apitypes`; `internal/testing` → domain, ports.
+  - Nothing imports `cmd/`. A package may always import its own subtree. Stdlib is always
+    allowed.
+  It runs in `make check` (`go test -race`), so CI fails on a violation.
+- **Fakes**: `internal/testing/fakes` has a fake per port, so orchestration and failure paths
+  are unit-tested without network or database.
+- **Consequences**: a vendor swap (another GPU cloud, another runtime) touches one adapter;
+  the core is tested without I/O. Cost: more packages and mapping code than a flat service,
+  and rules a newcomer must learn.
 
-## Decision
-Ports and adapters: `core/domain` (stdlib only, no I/O) ← `core/application` → `core/ports`; inbound and outbound adapters depend on the core, never on each other; only `cmd/*` wires adapters and reads `config/`. The rules are enforced by `internal/archtest/boundaries_test.go`, which fails the build on a forbidden import.
-
-## Alternatives
-- Plain layered packages without enforcement: drifts silently.
-- External linter (depguard): extra tool in CI for what one `go list` test does.
-
-## Rationale
-Vendor swaps (another GPU cloud, another runtime) touch one adapter. Every port has a fake in `internal/testing/fakes`, so orchestration failure paths are unit-tested.
-
-## Consequences
-- Positive: core tested without network or database; adapters are swappable.
-- Negative: more packages and mapping code than a flat service; new contributors must learn the rules.
-
-## References
-ARCHITECTURE.md §1, §2, §9; `internal/archtest`.
+## Technologies and alternatives
+- Involved: Go 1.25 (`go list`, `testing`).
+- Alternatives: layered packages without enforcement: drifts silently; depguard or another
+  linter: an extra CI tool for what one test does.

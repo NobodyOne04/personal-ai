@@ -3,35 +3,38 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-## Context
-SEC-001: the model `runtime` settings and a deployment's `runtime_config` could name any
-container image, enable `trust_remote_code` or pass any `extra_args`. A holder of the management
-token could run their own code on a RunPod GPU next to `HF_TOKEN` and `VLLM_API_KEY`.
+Fixes SEC-001: only config decides which container images and which model code may run on
+rented GPUs; the API can only choose among approved options.
 
-## Decision
-- `runtime.allowed_images` in config lists the images models may use; `runtime.image` is always
-  allowed; anything else is refused when a deployment is prepared.
-- `runtime.allow_trust_remote_code` (default `false`) gates `trust_remote_code`.
-- `runtime.allow_extra_args` (default `false`) gates free-form `extra_args`. vLLM has several
-  code-loading flags (`--worker-cls`, `--middleware`, ...) and its parser accepts abbreviations
-  and underscores, so individual flags cannot be reliably denied.
-- String settings and the model artifact may not start with `-`, so a value cannot become a flag.
-- A deployment's `runtime_config` cannot set `image`, `trust_remote_code` or `extra_args`; only
-  the model (catalog) can.
+## Technical details
+- **Problem** (SEC-001): a model's `runtime` settings and a deployment's `runtime_config`
+  could name any container image, enable `trust_remote_code` or pass any `extra_args`. A
+  holder of the management token could run their own code on a RunPod GPU next to `HF_TOKEN`
+  and `VLLM_API_KEY`.
+- **Config** (`runtime` section):
+  - `runtime.image` (default `vllm/vllm-openai:v0.33.0`) is always allowed;
+    `runtime.allowed_images` lists any other image a model may name.
+  - `runtime.allow_trust_remote_code` (default `false`) gates `trust_remote_code`.
+  - `runtime.allow_extra_args` (default `false`) gates free-form `extra_args`.
+- **Enforcement** (`adapters/outbound/inference/vllm/vllm.go`, when a deployment is
+  prepared): an image not allowed fails with "runtime.image ... is not in
+  runtime.allowed_images"; `trust_remote_code` / `extra_args` without their flag fail too.
+  Errors are collected and returned together.
+- **No flag injection**: string settings and the model artifact may not start with `-`. vLLM
+  args are built from typed fields only: `--model`, `--served-model-name`, `--host 0.0.0.0`,
+  `--port`, then optional `--max-model-len`, `--dtype`, `--gpu-memory-utilization`,
+  `--tensor-parallel-size`, `--quantization`, `--trust-remote-code`, `--enforce-eager`.
+  The key goes in the environment (`VLLM_API_KEY`), never in args.
+- **Per-model only**: `perModelOnly = image, trust_remote_code, extra_args`: a deployment's
+  `runtime_config` can't set them; only the model in the catalog can.
+- **Why no deny list**: vLLM has several code-loading flags (`--worker-cls`,
+  `--middleware`, ...) and its parser accepts abbreviations and underscores
+  (`--trust-remote`, `--trust_remote_code`), so a deny list is bypassable.
+- **Consequences**: a leaked management token can no longer run custom containers or remote
+  code. A new vLLM image or a model needing remote code needs a config change and restart.
 
-## Alternatives
-- Deny-list dangerous flags in `extra_args`: bypassed by `--trust-remote`, `--trust_remote_code`
-  and the other code-loading flags.
-- Pass `HF_TOKEN` only to models that ask for it: still lets a custom image run arbitrary code.
-- Restrict model registration to config only: removes the management API's model editing.
-
-## Rationale
-The operator decides, in config, which code may run on rented GPUs; the API can choose among
-approved options only.
-
-## Consequences
-- Positive: a leaked management token can no longer run custom containers or remote code.
-- Negative: a new vLLM image or a model needing remote code requires a config change and restart.
-
-## References
-`docs/security/SECURITY_REPORT.md` SEC-001; ADR 0004; `adapters/outbound/inference/vllm/vllm.go`.
+## Technologies and alternatives
+- Involved: vLLM OpenAI server image.
+- Alternatives: deny-list flags in `extra_args`: bypassable as above; pass `HF_TOKEN` only to
+  models that ask: a custom image still runs arbitrary code; models in config only: loses
+  the API's model editing.
