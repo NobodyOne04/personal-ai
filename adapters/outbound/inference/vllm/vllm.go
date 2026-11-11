@@ -49,10 +49,14 @@ type Config struct {
 	// is always allowed. Anything else is refused, so a management token cannot
 	// run arbitrary code next to the runtime's credentials.
 	AllowedImages []string
-	// AllowTrustRemoteCode permits trust_remote_code and --trust-remote-code,
-	// which run Python code from the model repository.
+	// AllowTrustRemoteCode permits trust_remote_code, which runs Python code
+	// from the model repository.
 	AllowTrustRemoteCode bool
-	HTTPClient           *http.Client
+	// AllowExtraArgs permits free-form extra_args. vLLM has many flags that
+	// load code (--worker-cls, --middleware, ...) and its parser accepts
+	// abbreviations and underscores, so flags cannot be filtered one by one.
+	AllowExtraArgs bool
+	HTTPClient     *http.Client
 	// HealthTimeout bounds one health probe.
 	HealthTimeout time.Duration
 }
@@ -175,9 +179,11 @@ func (r *Runtime) parseSettings(m model.Model, overrides map[string]any) (settin
 	if s.Image != r.cfg.DefaultImage && !slices.Contains(r.cfg.AllowedImages, s.Image) {
 		errs = append(errs, fmt.Errorf("runtime.image %q is not in runtime.allowed_images", s.Image))
 	}
-	if !r.cfg.AllowTrustRemoteCode && (s.TrustRemoteCode ||
-		slices.ContainsFunc(s.ExtraArgs, func(a string) bool { return strings.HasPrefix(a, "--trust-remote-code") })) {
+	if s.TrustRemoteCode && !r.cfg.AllowTrustRemoteCode {
 		errs = append(errs, errors.New("trust_remote_code needs runtime.allow_trust_remote_code"))
+	}
+	if len(s.ExtraArgs) > 0 && !r.cfg.AllowExtraArgs {
+		errs = append(errs, errors.New("extra_args needs runtime.allow_extra_args"))
 	}
 	return s, errors.Join(errs...)
 }
@@ -188,6 +194,9 @@ func (r *Runtime) Prepare(_ context.Context, spec ports.PrepareSpec) (compute.La
 		return compute.LaunchSpec{}, errors.New("vllm: deployment id is required")
 	}
 	s, err := r.parseSettings(spec.Model, spec.Overrides)
+	if err == nil && strings.HasPrefix(spec.Model.Artifact, "-") {
+		err = errors.New("model artifact must not start with '-'")
+	}
 	if err != nil {
 		return compute.LaunchSpec{}, fmt.Errorf("vllm: %w", err)
 	}
@@ -575,6 +584,10 @@ func asString(v any) (string, error) {
 	s, ok := v.(string)
 	if !ok {
 		return "", errors.New("must be a string")
+	}
+	// A value becomes its own argv item; one starting with "-" could be read as a flag.
+	if strings.HasPrefix(s, "-") {
+		return "", errors.New("must not start with '-'")
 	}
 	return s, nil
 }

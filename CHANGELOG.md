@@ -3,7 +3,7 @@
 ## Unreleased
 
 ### Security
-- Runtime images limited to an allowlist, remote model code off by default, deployments can no longer override image or code options (SEC-001)
+- Runtime images limited to an allowlist, remote model code and free-form vLLM flags off by default, deployments can no longer override image or code options (SEC-001)
 - Production database URL verifies the server certificate (SEC-002)
 - Build binaries and scratch files no longer tracked (SEC-003)
 - vLLM image, base images and CI actions pinned, Dependabot keeps them current (SEC-005)

@@ -29,5 +29,7 @@ OpenAI-compatible API, with a CLI and a Telegram bot. Go, PostgreSQL, Kubernetes
 
 ## Gotchas
 - Runtime images must be in `runtime.allowed_images` (or be `runtime.image`); a deployment's
-  `runtime_config` cannot change `image`, `trust_remote_code` or `extra_args` (ADR 0008).
+  `runtime_config` cannot change `image`, `trust_remote_code` or `extra_args`; `extra_args` needs
+  `runtime.allow_extra_args` (ADR 0008). Never filter vLLM flags with a deny list: its parser
+  accepts abbreviations and underscores.
 - Base images and actions are pinned by digest/SHA; let Dependabot bump them, don't go back to tags.

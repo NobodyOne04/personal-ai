@@ -52,8 +52,10 @@ their IDs and stay listed after they are resolved.
   `runtime_config`; pass `HF_TOKEN` only to models that need gated weights.
 - **References**: CWE-829, CWE-94, OWASP ASVS V14.2.
 - **Resolution** (2026-11-11): `runtime.allowed_images` (the default image is always allowed)
-  and `runtime.allow_trust_remote_code` (default off) in config; `trust_remote_code` and
-  `--trust-remote-code` in `extra_args` are refused unless enabled; a deployment's
+  and `runtime.allow_trust_remote_code` (default off) in config; `extra_args` refused unless
+  `runtime.allow_extra_args` is set (a deny list of flags was bypassable: vLLM accepts
+  abbreviations, underscores and other code-loading flags); string settings and the artifact may
+  not start with `-`; a deployment's
   `runtime_config` can no longer set `image`, `trust_remote_code` or `extra_args`. Verified by
   `TestPrepareRestrictsWhatCodeRuns`. ADR 0008.
 
