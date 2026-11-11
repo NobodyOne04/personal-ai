@@ -16,7 +16,7 @@ configMapGenerator:
   - name: personal-ai-config
     behavior: replace
     files:
-      - config.json
+      - config.yaml
 images:
   - name: personal-ai
     newName: ghcr.io/your-org/personal-ai

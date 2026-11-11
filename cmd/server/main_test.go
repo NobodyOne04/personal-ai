@@ -68,7 +68,7 @@ func TestRunServesAndStopsOnContextCancel(t *testing.T) {
 	}))
 	defer runpodStub.Close()
 
-	cfgPath := filepath.Join(t.TempDir(), "config.json")
+	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
 	cfg := fmt.Sprintf(`{
 		"compute": {"runpod": {"base_url": %q, "offerings": [{"id":"a40","gpu_type_id":"NVIDIA A40","gpu_count":1,"vram_per_gpu_gb":48}]}},
 		"default_model": "m1",

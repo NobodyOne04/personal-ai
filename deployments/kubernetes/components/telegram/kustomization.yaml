@@ -1,4 +1,4 @@
-# The Telegram bot. Requires telegram.allowed_user_ids in config.json and
+# The Telegram bot. Requires telegram.allowed_user_ids in config.yaml and
 # PERSONAL_AI_TELEGRAM_TOKEN in the secret.
 apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component

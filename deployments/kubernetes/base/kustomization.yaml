@@ -14,7 +14,7 @@ resources:
 configMapGenerator:
   - name: personal-ai-config
     files:
-      - config.json
+      - config.yaml
 images:
   - name: personal-ai
     newName: personal-ai

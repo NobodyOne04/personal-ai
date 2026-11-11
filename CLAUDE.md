@@ -14,7 +14,7 @@ through this list first; don't deploy until each item is done or the owner expli
 3. **SEC-006**: after the first deploy, check the NetworkPolicies and rate limit: bot reaches the
    server, server reaches PostgreSQL and RunPod, ingress still streams.
 4. **ADR 0009** (random per-deployment runtime keys, stored encrypted) is accepted but not built:
-   implement it. **ADR 0010** (YAML config) is accepted but not built.
+   implement it.
 5. Config: models with a custom `image`, `trust_remote_code` or `extra_args` need
    `runtime.allowed_images` / `allow_trust_remote_code` / `allow_extra_args`.
 6. Start with one small model and a low `scheduling.max_active`, and watch the logs (ARCHITECTURE.md §10).
@@ -31,7 +31,7 @@ Update the security report statuses as items are verified, then remove this sect
 ## Layout
 - `core/domain`, `core/application`, `core/ports`: business rules; no I/O, stdlib only.
 - `adapters/inbound/{rest,telegram,cli}`, `adapters/outbound/{compute/runpod,inference/vllm,persistence/postgres,messaging}`.
-- `cmd/{server,telegram,cli}`: wiring only. `config/`: JSON config + `PERSONAL_AI_*` env secrets.
+- `cmd/{server,telegram,cli}`: wiring only. `config/`: YAML config (ADR 0010) + `PERSONAL_AI_*` env secrets.
 - `internal/archtest`: fails the build on forbidden imports. `internal/testing/fakes`: a fake per port.
 - `deployments/kubernetes`: base + `local`/`production` overlays.
 - `ARCHITECTURE.md`: full design. `docs/adr/`: decision records. `docs/security/SECURITY_REPORT.md`: security baseline.
