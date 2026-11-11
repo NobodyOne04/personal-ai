@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-11
-- Replaces: [0004](0004-vllm-runtime-with-derived-api-keys.md) (rejected)
+- Replaces: [0004](0004-vllm-runtime-with-derived-api-keys.adr) (rejected)
 
 > Accepted by the owner on 2026-11-11. Implemented 2026-11-11 (migration `0002_runtime_keys.sql`).
 
