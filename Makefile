@@ -10,7 +10,7 @@ TAG               ?= dev
 OVERLAY           ?= local
 K8S_DIR           := deployments/kubernetes
 K8S_NAMESPACE     ?= personal-ai
-CONFIG            ?= config/config.example.json
+CONFIG            ?= config/config.example.yaml
 
 TEST_DB_CONTAINER ?= personal-ai-test-pg
 TEST_DB_PORT      ?= 55432

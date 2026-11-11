@@ -71,10 +71,10 @@ export PERSONAL_AI_RUNPOD_API_KEY=rpa_...
 export PERSONAL_AI_HF_TOKEN=hf_...          # optional, for gated models
 
 # 2. Describe your models and approved GPUs (start from the example).
-cp config/config.example.json config/local.json   # then edit "models" and "compute.runpod.offerings"
+cp config/config.example.yaml config/local.yaml   # then edit "models" and "compute.runpod.offerings"
 
 # 3. Start PostgreSQL in Docker and run the server on :8080.
-make run-server CONFIG=config/local.json
+make run-server CONFIG=config/local.yaml
 ```
 
 In another terminal:
@@ -91,8 +91,8 @@ export PERSONAL_AI_API_URL=http://localhost:8080
 
 ## Configuration
 
-Non-secret settings live in a JSON file (`PERSONAL_AI_CONFIG` or `-config`). Unknown keys are rejected so typos
-fail loudly. See [`config/config.example.json`](config/config.example.json).
+Non-secret settings live in a YAML file (`PERSONAL_AI_CONFIG` or `-config`). Unknown keys are rejected so typos
+fail loudly. See [`config/config.example.yaml`](config/config.example.yaml).
 
 | Section | Key settings |
 |---|---|
@@ -106,18 +106,16 @@ fail loudly. See [`config/config.example.json`](config/config.example.json).
 | `telegram` | `allowed_user_ids` (mandatory allowlist) |
 | `models` | the catalog seeded on startup; `default_model` |
 
-A model entry:
+A model entry (under `models:`):
 
-```json
-{
-  "id": "qwen2.5-7b",
-  "name": "Qwen 2.5 7B Instruct",
-  "artifact": "Qwen/Qwen2.5-7B-Instruct",
-  "features": ["chat"],
-  "requirements": { "min_vram_gb": 24, "min_gpu_count": 1 },
-  "runtime": { "max_model_len": 16384, "dtype": "auto", "gpu_memory_utilization": 0.9 },
-  "generation": { "temperature": 0.7, "max_tokens": 2048 }
-}
+```yaml
+- id: qwen2.5-7b
+  name: Qwen 2.5 7B Instruct
+  artifact: Qwen/Qwen2.5-7B-Instruct
+  features: [chat]
+  requirements: { min_vram_gb: 24, min_gpu_count: 1 }
+  runtime: { max_model_len: 16384, dtype: auto, gpu_memory_utilization: 0.9 }
+  generation: { temperature: 0.7, max_tokens: 2048 }
 ```
 
 `requirements.min_vram_gb` is total VRAM across GPUs; the cheapest approved offering that satisfies it is chosen.
@@ -211,7 +209,7 @@ overlays:
 
 ```text
 deployments/kubernetes/
-├── base/                    namespace, ConfigMap (config.json), server Deployment + Service
+├── base/                    namespace, ConfigMap (config.yaml), server Deployment + Service
 ├── components/postgres/     in-cluster PostgreSQL StatefulSet + NetworkPolicy (server-only access)
 ├── components/telegram/     Telegram bot Deployment
 └── overlays/
@@ -226,13 +224,13 @@ minikube start
 make minikube-load                    # build personal-ai:dev and load it into the cluster
 make k8s-secrets OVERLAY=local        # generates tokens + DB password into overlays/local/secrets.env
 $EDITOR deployments/kubernetes/overlays/local/secrets.env   # set PERSONAL_AI_RUNPOD_API_KEY
-$EDITOR deployments/kubernetes/base/config.json             # models and offerings
+$EDITOR deployments/kubernetes/base/config.yaml             # models and offerings
 make k8s-apply OVERLAY=local
 make k8s-port-forward                 # API on http://localhost:8080
 ```
 
 **Production:** push an image (`make docker-build docker-push IMAGE=ghcr.io/you/personal-ai TAG=0.1.0`), set the
-image, host and `config.json` in `overlays/production`, create `secrets.env` (or better, feed the
+image, host and `config.yaml` in `overlays/production`, create `secrets.env` (or better, feed the
 `personal-ai-secrets` Secret from a secret manager), then `make k8s-apply OVERLAY=production`.
 
 Notes:

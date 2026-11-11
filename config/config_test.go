@@ -16,7 +16,7 @@ func env(m map[string]string) func(string) string { return func(k string) string
 
 func writeFile(t *testing.T, content string) string {
 	t.Helper()
-	p := filepath.Join(t.TempDir(), "config.json")
+	p := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -52,6 +52,31 @@ func TestLoadFileOverridesDefaultsButKeepsTheRest(t *testing.T) {
 	}
 }
 
+func TestLoadReadsYAML(t *testing.T) {
+	cfg, err := Load(writeFile(t, `
+# comments are allowed
+server:
+  addr: ":9090" # trailing comment
+scheduling:
+  idle_timeout: 5m
+models:
+  - id: m1
+    name: M1
+    artifact: org/m1
+    requirements: {min_vram_gb: 24}
+    runtime: {max_model_len: 4096}
+`), env(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.Addr != ":9090" || cfg.Scheduling.IdleTimeout.Std() != 5*time.Minute || len(cfg.Models) != 1 {
+		t.Fatalf("cfg = %+v", cfg)
+	}
+	if _, ok := cfg.Models[0].Runtime["max_model_len"].(int); !ok {
+		t.Fatalf("runtime numbers decode as int: %T", cfg.Models[0].Runtime["max_model_len"])
+	}
+}
+
 func TestLoadRejectsBadFiles(t *testing.T) {
 	tests := map[string]string{
 		"unknown key":      `{"serverr":{"addr":":1"}}`,
@@ -59,7 +84,8 @@ func TestLoadRejectsBadFiles(t *testing.T) {
 		"bad duration":     `{"scheduling":{"idle_timeout":"soon"}}`,
 		"numeric duration": `{"scheduling":{"idle_timeout":300}}`,
 		"trailing data":    `{} {}`,
-		"not json":         `server: yaml`,
+		"scalar section":   `server: yaml`,
+		"two documents":    "server: {addr: \":1\"}\n---\nserver: {addr: \":2\"}\n",
 	}
 	for name, content := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -68,7 +94,7 @@ func TestLoadRejectsBadFiles(t *testing.T) {
 			}
 		})
 	}
-	if _, err := Load(filepath.Join(t.TempDir(), "missing.json"), env(nil)); err == nil {
+	if _, err := Load(filepath.Join(t.TempDir(), "missing.yaml"), env(nil)); err == nil {
 		t.Fatal("missing file must be an error")
 	}
 }
@@ -153,9 +179,9 @@ func TestModelRuntimeStaysOpaque(t *testing.T) {
 }
 
 func TestExampleConfigIsValid(t *testing.T) {
-	cfg, err := Load("config.example.json", env(nil))
+	cfg, err := Load("config.example.yaml", env(nil))
 	if err != nil {
-		t.Fatalf("config.example.json must stay loadable: %v", err)
+		t.Fatalf("config.example.yaml must stay loadable: %v", err)
 	}
 	if _, err := cfg.DomainModels(); err != nil {
 		t.Fatal(err)
@@ -268,8 +294,8 @@ func TestSecretsCannotBeLoadedFromFile(t *testing.T) {
 // with secrets supplied, acceptable to the server.
 func TestKubernetesConfigsAreValid(t *testing.T) {
 	for _, path := range []string{
-		"../deployments/kubernetes/base/config.json",
-		"../deployments/kubernetes/overlays/production/config.json",
+		"../deployments/kubernetes/base/config.yaml",
+		"../deployments/kubernetes/overlays/production/config.yaml",
 	} {
 		t.Run(path, func(t *testing.T) {
 			secrets := goodSecrets()
@@ -283,7 +309,7 @@ func TestKubernetesConfigsAreValid(t *testing.T) {
 			}
 		})
 	}
-	cfg, _ := Load("../deployments/kubernetes/overlays/production/config.json", env(map[string]string{
+	cfg, _ := Load("../deployments/kubernetes/overlays/production/config.yaml", env(map[string]string{
 		EnvTelegramToken: "tg", EnvInferenceToken: "inf"}))
 	if err := cfg.ValidateForTelegram(); err != nil {
 		t.Fatalf("production config must be usable by the bot: %v", err)

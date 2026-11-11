@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.title="personal-ai" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=build /out/ /usr/local/bin/
-COPY config/config.example.json /etc/personal-ai/config.example.json
+COPY config/config.example.yaml /etc/personal-ai/config.example.yaml
 USER nonroot:nonroot
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/server"]

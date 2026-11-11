@@ -10,7 +10,6 @@
 package config
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"go.yaml.in/yaml/v3"
 
 	"personal-ai/core/domain/model"
 )
@@ -253,13 +254,14 @@ func (c *Config) readFile(path string) error {
 	}
 	defer f.Close()
 
-	dec := json.NewDecoder(f)
-	dec.DisallowUnknownFields() // a typo in a key must not be silently ignored
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(true) // a typo in a key must not be silently ignored
 	if err := dec.Decode(c); err != nil {
 		return fmt.Errorf("parse config %s: %w", path, err)
 	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return fmt.Errorf("parse config %s: unexpected data after the top-level object", path)
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("parse config %s: only one YAML document is allowed", path)
 	}
 	return nil
 }

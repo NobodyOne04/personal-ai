@@ -59,7 +59,7 @@ spec:
               containerPort: 8080
           env:
             - name: PERSONAL_AI_CONFIG
-              value: /etc/personal-ai/config.json
+              value: /etc/personal-ai/config.yaml
             - name: PERSONAL_AI_DATABASE_URL
               valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_DATABASE_URL } }
             - name: PERSONAL_AI_MANAGEMENT_TOKEN
@@ -74,8 +74,8 @@ spec:
               valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_HF_TOKEN, optional: true } }
           volumeMounts:
             - name: config
-              mountPath: /etc/personal-ai/config.json
-              subPath: config.json
+              mountPath: /etc/personal-ai/config.yaml
+              subPath: config.yaml
               readOnly: true
           # The server listens only after migrations and reconciliation, so
           # /healthz doubles as readiness. Startup may take a while when it has

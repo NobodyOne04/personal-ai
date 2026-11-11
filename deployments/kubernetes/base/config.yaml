@@ -1,0 +1,59 @@
+# Base config for Kubernetes. Secrets come from the personal-ai-secrets Secret, never from here.
+server:
+  addr: ":8080"
+  read_header_timeout: 10s
+  read_timeout: 30s
+  idle_timeout: 2m
+  shutdown_timeout: 30s
+  max_body_bytes: 1048576
+
+log:
+  level: info
+  format: json
+
+scheduling:
+  interval: 1m
+  idle_timeout: 30m
+  max_active: 1
+
+routing:
+  not_deployed_policy: reject
+  wait_timeout: 20m
+
+compute:
+  runpod:
+    cloud_type: SECURE
+    name_prefix: pai-
+    container_disk_gb: 50
+    volume_gb: 0
+    offerings:
+      - { id: a40-1x, gpu_type_id: NVIDIA A40, gpu_count: 1, vram_per_gpu_gb: 48, hourly_usd: 0.40 }
+      - { id: a100-80g-1x, gpu_type_id: NVIDIA A100 80GB PCIe, gpu_count: 1, vram_per_gpu_gb: 80, hourly_usd: 1.64 }
+
+deployment:
+  provision_timeout: 15m
+  ready_timeout: 30m
+  poll_interval: 10s
+  storage_gb: 0
+
+runtime:
+  image: vllm/vllm-openai:v0.33.0
+
+client:
+  api_url: http://localhost:8080
+  timeout: 10m
+
+telegram:
+  allowed_user_ids: []
+
+default_model: example-model
+
+models:
+  - id: example-model
+    name: Example Model
+    artifact: organization/model-name
+    description: Replace with a real model.
+    features: [chat]
+    requirements: { min_vram_gb: 24, recommended_vram_gb: 32, min_gpu_count: 1 }
+    runtime: { max_model_len: 8192, dtype: auto, gpu_memory_utilization: 0.9 }
+    generation: { temperature: 0.7, top_p: 0.9, max_tokens: 2048 }

@@ -3,8 +3,7 @@
 - Status: Rejected (2026-11-11), replaced by [0010](0010-yaml-config-secrets-from-env.md)
 - Date: 2026-11-11
 
-> Rejected by the owner: config moves to YAML (0010). Secrets stay environment-only. The body
-> below describes the code as it is until 0010 is built.
+> Rejected by the owner: config moved to YAML (0010). Secrets stay environment-only.
 
 ## Context
 Configuration includes offerings, models and policies; secrets must never land in a config file or ConfigMap.

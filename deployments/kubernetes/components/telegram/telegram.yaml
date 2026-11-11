@@ -35,7 +35,7 @@ spec:
           # RunPod credentials here.
           env:
             - name: PERSONAL_AI_CONFIG
-              value: /etc/personal-ai/config.json
+              value: /etc/personal-ai/config.yaml
             - name: PERSONAL_AI_TELEGRAM_TOKEN
               valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_TELEGRAM_TOKEN } }
             - name: PERSONAL_AI_INFERENCE_TOKEN
@@ -45,8 +45,8 @@ spec:
               valueFrom: { secretKeyRef: { name: personal-ai-secrets, key: PERSONAL_AI_MANAGEMENT_TOKEN, optional: true } }
           volumeMounts:
             - name: config
-              mountPath: /etc/personal-ai/config.json
-              subPath: config.json
+              mountPath: /etc/personal-ai/config.yaml
+              subPath: config.yaml
               readOnly: true
           resources:
             requests: { cpu: 10m, memory: 32Mi }

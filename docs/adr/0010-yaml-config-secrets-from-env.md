@@ -4,7 +4,7 @@
 - Date: 2026-11-11
 - Replaces: [0007](0007-json-config-secrets-from-env.md) (rejected)
 
-> Accepted by the owner on 2026-11-11. **Not implemented yet**: the loader still reads JSON (0007).
+> Accepted by the owner on 2026-11-11. Implemented 2026-11-11.
 
 ## Context
 0007 chose JSON only because the build sandbox could not download a YAML module. That no longer

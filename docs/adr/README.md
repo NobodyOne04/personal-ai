@@ -13,4 +13,4 @@ Format and lifecycle: `docs/adr/NNNN-short-title.md`, statuses Proposed, Accepte
 | [0007](0007-json-config-secrets-from-env.md) | JSON config file, secrets only from the environment | Rejected, replaced by 0010 |
 | [0008](0008-allowlist-runtime-images-and-remote-code.md) | Allowlist runtime images and gate remote model code | Accepted |
 | [0009](0009-vllm-runtime-with-random-encrypted-keys.md) | vLLM runtime with random per-deployment keys stored encrypted | Accepted (not built yet) |
-| [0010](0010-yaml-config-secrets-from-env.md) | YAML config file, secrets only from the environment | Accepted (not built yet) |
+| [0010](0010-yaml-config-secrets-from-env.md) | YAML config file, secrets only from the environment | Accepted |
