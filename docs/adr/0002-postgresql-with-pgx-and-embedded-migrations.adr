@@ -3,24 +3,37 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Accepted by the owner on 2026-11-11.
+Accepted by the owner on 2026-11-11: state lives in PostgreSQL through pgx, migrations ship
+inside the binary and run at startup, and concurrent updates are guarded by optimistic
+locking.
 
-## Context
-Deployments, the model catalog, preferences and usage must survive restarts, and lifecycle updates race with concurrent requests.
+## Technical details
+- **Problem**: deployments, the model catalog, preferences and usage must survive restarts,
+  and lifecycle updates race with concurrent requests (launch vs stop vs scheduler).
+- **Driver**: `github.com/jackc/pgx/v5` (`pgxpool`), the module's only direct dependency
+  besides the YAML parser ([0010](0010-yaml-config-secrets-from-env.adr)). DSN from
+  `PERSONAL_AI_DATABASE_URL`.
+- **Schema** (`adapters/outbound/persistence/postgres/migrations/`): `0001_init.sql` creates
+  `model_catalog`, `deployments`, `usage_records`, `preferences`; `0002_runtime_keys.sql` adds
+  `runtime_key_ciphertext BYTEA` and `runtime_key_version SMALLINT`
+  ([0009](0009-vllm-runtime-with-random-encrypted-keys.adr)).
+- **Migrations**: `//go:embed migrations/*.sql`. `postgres.Migrate` takes one connection,
+  `pg_advisory_lock(<constant>)` so two starting servers can't race, creates
+  `schema_migrations` if missing, and applies each unapplied file in its own transaction
+  (`pgx.BeginFunc`) together with its `schema_migrations` row. Unlock runs with
+  `context.WithoutCancel`. Returns the versions applied.
+- **Optimistic locking**: `deployments.version`; an update is
+  `... SET ..., version = version + 1 WHERE id = $1 AND version = $n`. Zero rows means a
+  concurrent change: the caller reloads and decides. `last_activity_at` is always merged with
+  `GREATEST(...)` so a stale writer can't move it back.
+- **Activity**: `RecordActivity` updates only `last_activity_at` (with `GREATEST`) without
+  bumping `version`, so chat traffic never conflicts with lifecycle changes.
+- **Tests**: `make test-integration` runs the PostgreSQL tests and a full server boot against
+  Docker PostgreSQL on port 55432.
+- **Consequences**: no separate migration step at deploy time; concurrent launch/stop can't
+  overwrite each other. The server needs DDL rights at startup; rollbacks are manual SQL.
 
-## Decision
-PostgreSQL accessed through `pgx/v5`. Migrations are SQL files embedded in the binary and applied at startup by `postgres.Migrate` (advisory lock, one transaction per file). Deployment updates use optimistic locking; `RecordActivity` updates `last_activity_at` outside that lock.
-
-## Alternatives
-- `golang-migrate`: another dependency for a few dozen lines.
-- SQLite: simpler, but no shared server for the Kubernetes deployment and weaker concurrency.
-
-## Rationale
-One dependency, migrations ship with the binary, and concurrent launch/stop cannot overwrite each other.
-
-## Consequences
-- Positive: no separate migration step at deploy time.
-- Negative: the server needs DDL rights on startup; rollbacks are manual SQL.
-
-## References
-ARCHITECTURE.md §6b (Persistence, Orchestration), §7; `adapters/outbound/persistence/postgres`.
+## Technologies and alternatives
+- Involved: PostgreSQL, pgx/v5 + pgxpool, Go `embed`, Docker (integration tests).
+- Alternatives: golang-migrate: a dependency for a few dozen lines; SQLite: no shared server
+  for Kubernetes, weaker concurrency.

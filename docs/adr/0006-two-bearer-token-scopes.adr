@@ -3,24 +3,32 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Accepted by the owner on 2026-11-11.
+Accepted by the owner on 2026-11-11: two static bearer tokens split the API into
+cost-incurring management and everyday inference.
 
-## Context
-The API exposes cost-incurring management actions (deploy, stop, register models) and everyday chat. Clients like the Telegram bot should only get what they need.
+## Technical details
+- **Problem**: the API exposes cost-incurring management actions (deploy, stop, register
+  models) and everyday chat. Clients like the Telegram bot should only get what they need.
+- **Scopes** (`adapters/inbound/rest/handler.go`):
+  - management token (`PERSONAL_AI_MANAGEMENT_TOKEN`): every `/api/v1/...` route: models
+    (list, register, get, update, activate, deactivate, validate), default-model preference,
+    deployments (list, create, get, delete, stop, restart, pin, unpin, health), usage.
+  - inference token (`PERSONAL_AI_INFERENCE_TOKEN`): the OpenAI-compatible `GET /v1/models`
+    and `POST /v1/chat/completions` (streaming).
+- **Validation** (`config`): each token at least `MinTokenLength` = 24 characters, and the two
+  must differ; the server refuses to start otherwise.
+- **Check**: the middleware takes `Authorization: Bearer <token>`, hashes it with SHA-256 and
+  compares with the stored digest via `subtle.ConstantTimeCompare` (equal length, constant
+  time). Failure: `401` with `WWW-Authenticate: Bearer realm="personal-ai"`. An empty token
+  rejects every request to its scope.
+- **No leaks**: responses never include runtime endpoints or keys
+  ([0009](0009-vllm-runtime-with-random-encrypted-keys.adr)).
+- **Rate limiting**: none in the server; the production ingress sets
+  `nginx.ingress.kubernetes.io/limit-rps: "10"` and `limit-connections: "20"` (SEC-006).
+- **Consequences**: least privilege with no external dependency, simple to audit. No
+  per-client identity or revocation short of rotating a token.
 
-## Decision
-Two static bearer tokens from the environment: management (`/api/v1`) and inference (`/v1`). Each at least 24 characters and different; compared as SHA-256 digests in constant time. Responses never include runtime endpoints or credentials.
-
-## Alternatives
-- One token: chat clients could launch GPUs.
-- OAuth/OIDC: an identity provider for a single-owner system.
-
-## Rationale
-Least privilege with no external dependency.
-
-## Consequences
-- Positive: simple, auditable.
-- Negative: no per-client identity or revocation short of rotating a token; no rate limiting.
-
-## References
-ARCHITECTURE.md §6a A11, §6b (REST); `adapters/inbound/rest/handler.go`.
+## Technologies and alternatives
+- Involved: Go `crypto/sha256`, `crypto/subtle`, ingress-nginx.
+- Alternatives: one token: chat clients could launch GPUs; OAuth/OIDC: an identity provider
+  for a single-owner system.

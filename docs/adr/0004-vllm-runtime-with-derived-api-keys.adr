@@ -3,25 +3,25 @@
 - Status: Rejected (2026-11-11), replaced by [0009](0009-vllm-runtime-with-random-encrypted-keys.adr)
 - Date: 2026-11-11
 
-> Rejected by the owner: per-deployment keys are to be random and stored encrypted (0009).
-> vLLM as the runtime is kept. Superseded in code by 0009.
+Rejected by the owner: per-deployment keys are to be random and stored encrypted (0009).
+vLLM as the runtime is kept. This record describes the proposal as it was.
 
-## Context
-Each model runs in vLLM on a RunPod pod reachable through RunPod's public HTTPS proxy, so the runtime needs a credential, and storing one per deployment adds secret storage.
+## Technical details
+- **Problem**: each model runs in vLLM on a RunPod pod reachable through RunPod's public HTTPS
+  proxy, so the runtime needs a credential; storing one per deployment adds secret storage.
+- **Proposal**:
+  - vLLM's OpenAI-compatible server is the runtime.
+  - The per-deployment key is `HMAC-SHA256(PERSONAL_AI_RUNTIME_KEY_SECRET, deployment ID)`,
+    passed to the pod as `VLLM_API_KEY` and recomputed by the server on every call.
+  - No runtime credential is stored anywhere.
+- **Expected consequences**: nothing to leak from the database; rotating the one server
+  secret invalidates every runtime key at once, but requires restarting every running
+  deployment. vLLM's key covers `/v1` only; other vLLM routes stay open on the proxy
+  (later SEC-004).
+- **Why rejected**: keys are deterministic (anyone with the server secret and an ID has the
+  key) and can't be rotated one deployment at a time.
 
-## Decision
-vLLM speaking the OpenAI protocol. The per-deployment key is HMAC-SHA256(`PERSONAL_AI_RUNTIME_KEY_SECRET`, deployment ID), passed to the pod as `VLLM_API_KEY` and recomputed by the server on each call. No runtime credential is stored.
-
-## Alternatives
-- Random key per deployment stored in PostgreSQL: needs encryption at rest and rotation.
-- No key, rely on the proxy URL being unguessable: anyone with the URL could use the GPU.
-
-## Rationale
-Zero stored secrets for runtimes; rotating the one server secret invalidates every runtime key.
-
-## Consequences
-- Positive: nothing to leak from the database.
-- Negative: rotating the secret requires restarting running deployments; vLLM's key covers `/v1` only, other vLLM routes stay open on the proxy.
-
-## References
-ARCHITECTURE.md §6a A2, §6b (vLLM / A2); `adapters/outbound/inference/vllm`.
+## Technologies and alternatives
+- Involved: vLLM, HMAC-SHA256.
+- Alternatives: random key per deployment stored in PostgreSQL (became 0009); no key,
+  relying on an unguessable proxy URL: anyone with the URL could use the GPU.

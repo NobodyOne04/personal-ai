@@ -3,24 +3,37 @@
 - Status: Accepted
 - Date: 2026-11-11
 
-> Accepted by the owner on 2026-11-11.
+Accepted by the owner on 2026-11-11: GPUs come only from offerings declared in config,
+pods are created idempotently by name, and orphans are found from labels carried in the
+pod's environment.
 
-## Context
-GPU instances cost money by the hour. The platform must never provision hardware the operator did not approve and must find orphaned pods after a crash.
+## Technical details
+- **Problem**: GPU instances cost money by the hour. The platform must never provision
+  hardware the operator didn't approve, and must find orphaned pods after a crash.
+- **API**: RunPod REST v1 (`https://rest.runpod.io/v1`, `DefaultBaseURL`) through plain
+  `net/http` in `adapters/outbound/compute/runpod`; RunPod types never leave the package.
+  Key from `PERSONAL_AI_RUNPOD_API_KEY`.
+- **Offerings**: declared in config under `compute.runpod.offerings` (`id`, `gpu_type_id`,
+  `gpu_count`, `vram_per_gpu_gb`, `hourly_usd` for cost estimates), e.g. `a40-1x`,
+  `a100-80g-1x`; never discovered from the API. Timeouts live under `deployment`
+  (`provision_timeout` 15m, `ready_timeout` 30m, `poll_interval` 10s). `scheduling.max_active` caps running deployments
+  (example config: 1) and so GPU spend; `scheduling.idle_timeout` (30m in the example) stops
+  idle ones.
+- **Idempotency**: RunPod has no idempotency keys. Every pod is named
+  `<NamePrefix><idempotency key>` (prefix default `pai-`) and the name is looked up before
+  `Provision` creates anything; the key is also stored as `PAI_IDEMPOTENCY_KEY` in the pod env.
+- **Labels**: RunPod has no labels, so deployment labels travel as `PAI_LABEL_<KEY>`
+  environment variables and are read back into `compute.Instance.Labels`. `ListInstances`
+  only returns pods with the name prefix.
+- **Reconciliation**: `deployment.Service.Reconcile` runs at startup (and an orphan check
+  after an interrupted launch): it lists the prefixed pods, matches their `deployment_id`
+  label to `deployments` rows, terminates pods no live deployment owns, and reports them in
+  `ReconcileReport.OrphansTerminated`. No `compute_instances` table exists.
+- **Consequences**: spending stays bounded by config; crash recovery needs no extra state. A
+  new GPU type needs a config change and restart; the orphan sweep runs only at startup and
+  on interrupted launches.
 
-## Decision
-RunPod REST v1 via `net/http`. Hardware offerings are declared in config (`compute.runpod.offerings`), not discovered. Idempotency: pod name `<prefix><idempotency key>`, looked up before create. Deployment labels travel as `PAI_LABEL_*` env vars; reconciliation finds orphans from those labels, so no `compute_instances` table exists.
-
-## Alternatives
-- Discover offerings from the RunPod API: could provision unapproved, expensive GPUs.
-- A `compute_instances` table: deferred until billing reconciliation needs it.
-
-## Rationale
-Spending stays bounded by config; crash recovery needs no extra state.
-
-## Consequences
-- Positive: no surprise hardware; restart-safe.
-- Negative: new GPU types need a config change; orphan sweep runs only at startup and on interrupted launches.
-
-## References
-ARCHITECTURE.md §6a deviation 2, §6b (RunPod, Reconciliation); `adapters/outbound/compute/runpod`.
+## Technologies and alternatives
+- Involved: RunPod REST API v1, Go `net/http`.
+- Alternatives: discover offerings from the API: could provision unapproved, expensive GPUs;
+  a `compute_instances` table: deferred until billing reconciliation needs it.
