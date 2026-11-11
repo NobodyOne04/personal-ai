@@ -1,12 +1,9 @@
 // Package config defines, loads and validates application configuration.
 //
-// Non-secret settings come from a JSON file (optional) with environment
-// overrides for a few operational knobs. Secrets are read from the environment
-// only and can never be loaded from, or written to, a file.
-//
-// The file format is JSON because the build environment of this phase could
-// not fetch third-party modules; every struct also carries yaml tags so that
-// switching to YAML later is a loader-only change.
+// Non-secret settings come from a YAML file (optional; unknown keys are
+// rejected) with environment overrides for a few operational knobs. Secrets
+// are read from the environment only and can never be loaded from, or written
+// to, a file (ADR 0010).
 package config
 
 import (

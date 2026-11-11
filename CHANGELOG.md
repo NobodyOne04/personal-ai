@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- `go.mod` lists `go.yaml.in/yaml/v3` as a direct dependency; `config` package doc describes the YAML file
 - ADRs rewritten in the new template (purpose, technical details, technologies and alternatives), with the implementation details
 - ADRs renamed to `docs/adr/NNNN-short-title.adr` (Markdown inside), links updated
 - Each deployment gets a random runtime key per launch, stored AES-256-GCM encrypted (migration 0002); the HMAC-derived keys are gone. Deployments started before this change must be restarted (ADR 0009)
