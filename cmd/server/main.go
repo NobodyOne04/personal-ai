@@ -130,7 +130,8 @@ func run(ctx context.Context, args []string, getenv func(string) string, stderr 
 		return err
 	}
 	runtime, err := vllm.New(vllm.Config{KeySecret: cfg.Secrets.RuntimeKeySecret, HFToken: cfg.Secrets.HFToken,
-		DefaultImage: cfg.Runtime.Image})
+		DefaultImage: cfg.Runtime.Image, AllowedImages: cfg.Runtime.AllowedImages,
+		AllowTrustRemoteCode: cfg.Runtime.AllowTrustRemoteCode})
 	if err != nil {
 		return err
 	}

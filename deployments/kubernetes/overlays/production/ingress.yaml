@@ -9,6 +9,9 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    # Per client IP; a streamed completion counts as one request.
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-connections: "20"
     cert-manager.io/cluster-issuer: letsencrypt
 spec:
   ingressClassName: nginx
@@ -26,3 +29,25 @@ spec:
                 name: personal-ai-server
                 port:
                   name: http
+---
+# Only the ingress controller and the bot may reach the server. Assumes
+# ingress-nginx in the "ingress-nginx" namespace; adjust for other controllers.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: personal-ai-server-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: personal-ai-server
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: personal-ai-telegram
+      ports:
+        - { port: 8080, protocol: TCP }

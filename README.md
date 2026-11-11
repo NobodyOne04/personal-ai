@@ -101,7 +101,7 @@ fail loudly. See [`config/config.example.json`](config/config.example.json).
 | `routing` | `not_deployed_policy`, `wait_timeout` |
 | `compute.runpod` | `cloud_type` (`SECURE`/`COMMUNITY`), `offerings` (the only hardware that may be rented, with `hourly_usd` for cost estimates) |
 | `deployment` | `provision_timeout`, `ready_timeout`, `poll_interval`, `storage_gb` |
-| `runtime` | `image` (default `vllm/vllm-openai:latest`) |
+| `runtime` | `image` (default `vllm/vllm-openai:v0.33.0`), `allowed_images` (other images models may name; anything else is refused), `allow_trust_remote_code` (default `false`). A deployment's `runtime_config` cannot change `image`, `trust_remote_code` or `extra_args` |
 | `client` | `api_url`, `timeout` (used by the CLI and the bot) |
 | `telegram` | `allowed_user_ids` (mandatory allowlist) |
 | `models` | the catalog seeded on startup; `default_model` |

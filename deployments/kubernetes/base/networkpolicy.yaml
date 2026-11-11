@@ -1,0 +1,19 @@
+# The server only needs DNS, PostgreSQL and HTTPS (RunPod API, runtime proxies).
+# shortcut: plain NetworkPolicy cannot filter by hostname, so 443 is open to any
+# address; use a CNI with FQDN policies (Cilium) to pin it to RunPod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: personal-ai-server-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: personal-ai-server
+  policyTypes: ["Egress"]
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - ports:
+        - { port: 5432, protocol: TCP }
+        - { port: 443, protocol: TCP }

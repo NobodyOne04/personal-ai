@@ -10,6 +10,7 @@ labels:
 resources:
   - namespace.yaml
   - server.yaml
+  - networkpolicy.yaml
 configMapGenerator:
   - name: personal-ai-config
     files:

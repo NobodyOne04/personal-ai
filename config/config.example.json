@@ -23,7 +23,7 @@
     }
   },
   "deployment": { "provision_timeout": "15m", "ready_timeout": "30m", "poll_interval": "10s", "storage_gb": 0 },
-  "runtime": { "image": "vllm/vllm-openai:latest" },
+  "runtime": { "image": "vllm/vllm-openai:v0.33.0" },
   "client": { "api_url": "http://localhost:8080", "timeout": "10m" },
   "telegram": { "allowed_user_ids": [] },
   "default_model": "example-model",
