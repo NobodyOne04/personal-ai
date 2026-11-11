@@ -21,6 +21,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -33,7 +34,7 @@ import (
 
 // Defaults for the launched container.
 const (
-	DefaultImage = "vllm/vllm-openai:latest"
+	DefaultImage = "vllm/vllm-openai:v0.33.0"
 	DefaultPort  = 8000
 )
 
@@ -44,7 +45,14 @@ type Config struct {
 	// HFToken is passed to the container to download gated models. Optional.
 	HFToken      string
 	DefaultImage string
-	HTTPClient   *http.Client
+	// AllowedImages lists the container images a model may name; DefaultImage
+	// is always allowed. Anything else is refused, so a management token cannot
+	// run arbitrary code next to the runtime's credentials.
+	AllowedImages []string
+	// AllowTrustRemoteCode permits trust_remote_code and --trust-remote-code,
+	// which run Python code from the model repository.
+	AllowTrustRemoteCode bool
+	HTTPClient           *http.Client
 	// HealthTimeout bounds one health probe.
 	HealthTimeout time.Duration
 }
@@ -103,7 +111,17 @@ type settings struct {
 	ExtraArgs            []string
 }
 
-func parseSettings(m model.Model, overrides map[string]any, defaultImage string) (settings, error) {
+// perModelOnly are settings a deployment may not override: they choose what
+// code runs in the container.
+var perModelOnly = []string{"image", "trust_remote_code", "extra_args"}
+
+func (r *Runtime) parseSettings(m model.Model, overrides map[string]any) (settings, error) {
+	var errs []error
+	for _, k := range perModelOnly {
+		if _, ok := overrides[k]; ok {
+			errs = append(errs, fmt.Errorf("runtime.%s cannot be overridden per deployment", k))
+		}
+	}
 	merged := map[string]any{}
 	for k, v := range m.Runtime {
 		merged[k] = v
@@ -111,11 +129,10 @@ func parseSettings(m model.Model, overrides map[string]any, defaultImage string)
 	for k, v := range overrides {
 		merged[k] = v
 	}
-	s := settings{Image: defaultImage, Port: DefaultPort}
+	s := settings{Image: r.cfg.DefaultImage, Port: DefaultPort}
 	if m.Requirements.MinGPUCount > 1 {
 		s.TensorParallelSize = m.Requirements.MinGPUCount
 	}
-	var errs []error
 	for k, v := range merged {
 		var err error
 		switch k {
@@ -155,8 +172,12 @@ func parseSettings(m model.Model, overrides map[string]any, defaultImage string)
 	if s.GPUMemoryUtilization < 0 || s.GPUMemoryUtilization > 1 {
 		errs = append(errs, errors.New("runtime.gpu_memory_utilization must be within (0, 1]"))
 	}
-	if s.Image == "" {
-		errs = append(errs, errors.New("runtime.image must not be empty"))
+	if s.Image != r.cfg.DefaultImage && !slices.Contains(r.cfg.AllowedImages, s.Image) {
+		errs = append(errs, fmt.Errorf("runtime.image %q is not in runtime.allowed_images", s.Image))
+	}
+	if !r.cfg.AllowTrustRemoteCode && (s.TrustRemoteCode ||
+		slices.ContainsFunc(s.ExtraArgs, func(a string) bool { return strings.HasPrefix(a, "--trust-remote-code") })) {
+		errs = append(errs, errors.New("trust_remote_code needs runtime.allow_trust_remote_code"))
 	}
 	return s, errors.Join(errs...)
 }
@@ -166,7 +187,7 @@ func (r *Runtime) Prepare(_ context.Context, spec ports.PrepareSpec) (compute.La
 	if spec.DeploymentID == "" {
 		return compute.LaunchSpec{}, errors.New("vllm: deployment id is required")
 	}
-	s, err := parseSettings(spec.Model, spec.Overrides, r.cfg.DefaultImage)
+	s, err := r.parseSettings(spec.Model, spec.Overrides)
 	if err != nil {
 		return compute.LaunchSpec{}, fmt.Errorf("vllm: %w", err)
 	}

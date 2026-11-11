@@ -67,6 +67,40 @@ func TestPrepareBuildsLaunchSpec(t *testing.T) {
 	}
 }
 
+func TestPrepareRestrictsWhatCodeRuns(t *testing.T) {
+	r, err := New(Config{KeySecret: secret, AllowedImages: []string{"vllm/vllm-openai:v0.32.0"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepare := func(runtime, overrides map[string]any) error {
+		m := testModel()
+		m.Runtime = runtime
+		_, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: m, Overrides: overrides})
+		return err
+	}
+	for name, tc := range map[string]struct {
+		runtime, overrides map[string]any
+		ok                 bool
+	}{
+		"allowed image":            {map[string]any{"image": "vllm/vllm-openai:v0.32.0"}, nil, true},
+		"unlisted image":           {map[string]any{"image": "evil/miner:1"}, nil, false},
+		"remote code":              {map[string]any{"trust_remote_code": true}, nil, false},
+		"remote code via args":     {map[string]any{"extra_args": []any{"--trust-remote-code"}}, nil, false},
+		"override image":           {nil, map[string]any{"image": DefaultImage}, false},
+		"override extra_args":      {nil, map[string]any{"extra_args": []any{"--seed", "2"}}, false},
+		"override harmless option": {nil, map[string]any{"max_model_len": 4096}, true},
+	} {
+		if err := prepare(tc.runtime, tc.overrides); (err == nil) != tc.ok {
+			t.Errorf("%s: err = %v, want ok=%v", name, err, tc.ok)
+		}
+	}
+
+	r.cfg.AllowTrustRemoteCode = true
+	if err := prepare(map[string]any{"trust_remote_code": true}, nil); err != nil {
+		t.Fatalf("remote code allowed by config: %v", err)
+	}
+}
+
 // fakeVLLM serves the subset of vLLM's API the adapter uses.
 func fakeVLLM(t *testing.T, key string, loaded bool) *httptest.Server {
 	t.Helper()

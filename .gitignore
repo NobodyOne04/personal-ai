@@ -34,3 +34,9 @@ go.work.sum
 
 # Kubernetes secrets (use secrets.env.example as the template)
 deployments/kubernetes/**/secrets.env
+
+# Build output and scratch files (SEC-003)
+bin/
+*.ipynb
+.ipynb_checkpoints/
+test.txt

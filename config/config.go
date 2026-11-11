@@ -157,6 +157,10 @@ type DeploymentConfig struct {
 // RuntimeConfig configures the inference runtime adapter.
 type RuntimeConfig struct {
 	Image string `json:"image" yaml:"image"`
+	// AllowedImages are extra images models may name besides Image.
+	AllowedImages []string `json:"allowed_images" yaml:"allowed_images"`
+	// AllowTrustRemoteCode lets models run code from their repository.
+	AllowTrustRemoteCode bool `json:"allow_trust_remote_code" yaml:"allow_trust_remote_code"`
 }
 
 // ClientConfig configures the CLI and Telegram bot, which reach the platform

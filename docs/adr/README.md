@@ -11,3 +11,4 @@ Format and lifecycle: `docs/adr/NNNN-short-title.md`, statuses Proposed, Accepte
 | [0005](0005-single-server-owns-state-clients-use-rest.md) | One server replica owns scheduling and state; CLI and Telegram use the REST API | Proposed |
 | [0006](0006-two-bearer-token-scopes.md) | Two bearer-token scopes: management and inference | Proposed |
 | [0007](0007-json-config-secrets-from-env.md) | JSON config file, secrets only from the environment | Proposed |
+| [0008](0008-allowlist-runtime-images-and-remote-code.md) | Allowlist runtime images and gate remote model code | Accepted |

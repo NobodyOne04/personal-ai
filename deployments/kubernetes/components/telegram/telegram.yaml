@@ -60,3 +60,26 @@ spec:
         - name: config
           configMap:
             name: personal-ai-config
+---
+# The bot takes no inbound traffic; it reaches the server and Telegram only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: personal-ai-telegram
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: personal-ai-telegram
+  policyTypes: ["Ingress", "Egress"]
+  egress:
+    - ports:
+        - { port: 53, protocol: UDP }
+        - { port: 53, protocol: TCP }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: personal-ai-server
+      ports:
+        - { port: 8080, protocol: TCP }
+    - ports:
+        - { port: 443, protocol: TCP }

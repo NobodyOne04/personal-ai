@@ -28,4 +28,6 @@ OpenAI-compatible API, with a CLI and a Telegram bot. Go, PostgreSQL, Kubernetes
 - Changes go through a branch and PR (`github-flow`) with a `CHANGELOG.md` line.
 
 ## Gotchas
-- `bin/`, `Untitled.ipynb` and `test.txt` are tracked by mistake (SEC-003); don't add more build output.
+- Runtime images must be in `runtime.allowed_images` (or be `runtime.image`); a deployment's
+  `runtime_config` cannot change `image`, `trust_remote_code` or `extra_args` (ADR 0008).
+- Base images and actions are pinned by digest/SHA; let Dependabot bump them, don't go back to tags.
