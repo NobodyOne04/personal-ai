@@ -1,10 +1,9 @@
 # 0003. RunPod compute with operator-declared offerings and label-based reconciliation
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Recorded from the implemented code and ARCHITECTURE.md. The design notes say these calls were
-> delegated during implementation; this record is not approved until the owner accepts it.
+> Accepted by the owner on 2026-11-11.
 
 ## Context
 GPU instances cost money by the hour. The platform must never provision hardware the operator did not approve and must find orphaned pods after a crash.

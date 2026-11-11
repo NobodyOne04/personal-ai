@@ -1,10 +1,9 @@
 # 0006. Two bearer-token scopes: management and inference
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Recorded from the implemented code and ARCHITECTURE.md. The design notes say these calls were
-> delegated during implementation; this record is not approved until the owner accepts it.
+> Accepted by the owner on 2026-11-11.
 
 ## Context
 The API exposes cost-incurring management actions (deploy, stop, register models) and everyday chat. Clients like the Telegram bot should only get what they need.
