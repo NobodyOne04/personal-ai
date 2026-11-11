@@ -11,12 +11,17 @@ token could run their own code on a RunPod GPU next to `HF_TOKEN` and `VLLM_API_
 ## Decision
 - `runtime.allowed_images` in config lists the images models may use; `runtime.image` is always
   allowed; anything else is refused when a deployment is prepared.
-- `runtime.allow_trust_remote_code` (default `false`) gates `trust_remote_code` and
-  `--trust-remote-code` in `extra_args`.
+- `runtime.allow_trust_remote_code` (default `false`) gates `trust_remote_code`.
+- `runtime.allow_extra_args` (default `false`) gates free-form `extra_args`. vLLM has several
+  code-loading flags (`--worker-cls`, `--middleware`, ...) and its parser accepts abbreviations
+  and underscores, so individual flags cannot be reliably denied.
+- String settings and the model artifact may not start with `-`, so a value cannot become a flag.
 - A deployment's `runtime_config` cannot set `image`, `trust_remote_code` or `extra_args`; only
   the model (catalog) can.
 
 ## Alternatives
+- Deny-list dangerous flags in `extra_args`: bypassed by `--trust-remote`, `--trust_remote_code`
+  and the other code-loading flags.
 - Pass `HF_TOKEN` only to models that ask for it: still lets a custom image run arbitrary code.
 - Restrict model registration to config only: removes the management API's model editing.
 

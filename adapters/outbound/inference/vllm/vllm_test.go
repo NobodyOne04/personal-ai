@@ -29,7 +29,7 @@ func testModel() model.Model {
 
 func newRuntime(t *testing.T) *Runtime {
 	t.Helper()
-	r, err := New(Config{KeySecret: secret, HFToken: "hf"})
+	r, err := New(Config{KeySecret: secret, HFToken: "hf", AllowExtraArgs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,9 @@ func TestPrepareRestrictsWhatCodeRuns(t *testing.T) {
 		"allowed image":            {map[string]any{"image": "vllm/vllm-openai:v0.32.0"}, nil, true},
 		"unlisted image":           {map[string]any{"image": "evil/miner:1"}, nil, false},
 		"remote code":              {map[string]any{"trust_remote_code": true}, nil, false},
-		"remote code via args":     {map[string]any{"extra_args": []any{"--trust-remote-code"}}, nil, false},
+		"extra args not enabled":   {map[string]any{"extra_args": []any{"--trust-remote"}}, nil, false},
+		"code-loading flag":        {map[string]any{"extra_args": []any{"--worker-cls=evil.Worker"}}, nil, false},
+		"flag smuggled in a value": {map[string]any{"dtype": "--trust-remote-code"}, nil, false},
 		"override image":           {nil, map[string]any{"image": DefaultImage}, false},
 		"override extra_args":      {nil, map[string]any{"extra_args": []any{"--seed", "2"}}, false},
 		"override harmless option": {nil, map[string]any{"max_model_len": 4096}, true},
@@ -93,6 +95,12 @@ func TestPrepareRestrictsWhatCodeRuns(t *testing.T) {
 		if err := prepare(tc.runtime, tc.overrides); (err == nil) != tc.ok {
 			t.Errorf("%s: err = %v, want ok=%v", name, err, tc.ok)
 		}
+	}
+
+	m := testModel()
+	m.Artifact = "--worker-cls=evil.Worker"
+	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: m}); err == nil {
+		t.Error("artifact starting with '-' must be refused")
 	}
 
 	r.cfg.AllowTrustRemoteCode = true

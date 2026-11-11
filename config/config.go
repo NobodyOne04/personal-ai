@@ -161,6 +161,8 @@ type RuntimeConfig struct {
 	AllowedImages []string `json:"allowed_images" yaml:"allowed_images"`
 	// AllowTrustRemoteCode lets models run code from their repository.
 	AllowTrustRemoteCode bool `json:"allow_trust_remote_code" yaml:"allow_trust_remote_code"`
+	// AllowExtraArgs lets models pass free-form vLLM flags, some of which load code.
+	AllowExtraArgs bool `json:"allow_extra_args" yaml:"allow_extra_args"`
 }
 
 // ClientConfig configures the CLI and Telegram bot, which reach the platform
