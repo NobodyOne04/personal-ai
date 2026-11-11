@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Changed
+- `CLAUDE.md` lists what must be done before the first real launch (SEC-004 fix, DB TLS, network policy checks, ADR review)
+
 ### Security
 - Runtime images limited to an allowlist, remote model code and free-form vLLM flags off by default, deployments can no longer override image or code options (SEC-001)
 - Production database URL verifies the server certificate (SEC-002)
