@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- ADR 0002 (PostgreSQL via pgx, embedded migrations) accepted
 - `CLAUDE.md` lists what must be done before the first real launch (SEC-004 fix, DB TLS, network policy checks, ADR review)
 
 ### Security

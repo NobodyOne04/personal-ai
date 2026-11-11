@@ -1,10 +1,9 @@
 # 0002. PostgreSQL via pgx with an embedded migration runner
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Recorded from the implemented code and ARCHITECTURE.md. The design notes say these calls were
-> delegated during implementation; this record is not approved until the owner accepts it.
+> Accepted by the owner on 2026-11-11.
 
 ## Context
 Deployments, the model catalog, preferences and usage must survive restarts, and lifecycle updates race with concurrent requests.

@@ -13,7 +13,7 @@ through this list first; don't deploy until each item is done or the owner expli
    provider's CA in `sslrootcert` if it isn't publicly trusted); confirm the server connects.
 3. **SEC-006**: after the first deploy, check the NetworkPolicies and rate limit: bot reaches the
    server, server reaches PostgreSQL and RunPod, ingress still streams.
-4. **ADRs 0001–0007** are Proposed; the owner reviews and accepts or rejects them.
+4. **ADRs 0001 and 0003–0007** are Proposed; the owner reviews and accepts or rejects them.
 5. Config: models with a custom `image`, `trust_remote_code` or `extra_args` need
    `runtime.allowed_images` / `allow_trust_remote_code` / `allow_extra_args`.
 6. Start with one small model and a low `scheduling.max_active`, and watch the logs (ARCHITECTURE.md §10).
