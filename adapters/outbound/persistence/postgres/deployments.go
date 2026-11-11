@@ -20,19 +20,25 @@ import (
 // DeploymentRepository implements ports.DeploymentRepository with optimistic
 // locking on the version column.
 type DeploymentRepository struct {
-	db *pgxpool.Pool
+	db   *pgxpool.Pool
+	keys keyCipher
 }
 
 var _ ports.DeploymentRepository = (*DeploymentRepository)(nil)
 
-// NewDeploymentRepository returns a repository backed by the pool.
-func NewDeploymentRepository(db *pgxpool.Pool) *DeploymentRepository {
-	return &DeploymentRepository{db: db}
+// NewDeploymentRepository returns a repository backed by the pool. keySecret
+// encrypts runtime keys at rest (ADR 0009).
+func NewDeploymentRepository(db *pgxpool.Pool, keySecret string) (*DeploymentRepository, error) {
+	keys, err := newKeyCipher(keySecret)
+	if err != nil {
+		return nil, err
+	}
+	return &DeploymentRepository{db: db, keys: keys}, nil
 }
 
 const deploymentColumns = `id, model_id, instance_id, status, runtime_config, runtime_ref, endpoint,
 	pinned, health, failure_stage, failure_reason, failed_at, idempotency_key, version,
-	created_at, ready_at, last_activity_at, updated_at`
+	created_at, ready_at, last_activity_at, updated_at, runtime_key_ciphertext, runtime_key_version`
 
 // endpointRecord is the stored form of compute.Endpoint.
 type endpointRecord struct {
@@ -66,18 +72,26 @@ func (r *DeploymentRepository) Save(ctx context.Context, d deployment.Deployment
 		stage, reason, failedAt = &st, &rs, &at
 	}
 
+	var keyCT []byte
+	var keyVersion *int16
+	if d.RuntimeKey != "" {
+		keyCT = r.keys.seal(string(d.ID), string(d.RuntimeKey))
+		v := int16(runtimeKeyVersion)
+		keyVersion = &v
+	}
+
 	args := []any{
 		string(d.ID), string(d.ModelID), instanceID, string(d.Status), runtimeCfg, d.RuntimeRef, endpoint,
 		d.Pinned, string(d.Health), stage, reason, failedAt, d.IdempotencyKey,
-		d.CreatedAt, d.ReadyAt, d.LastActivityAt, d.UpdatedAt,
+		d.CreatedAt, d.ReadyAt, d.LastActivityAt, d.UpdatedAt, keyCT, keyVersion,
 	}
 
 	if d.Version == 0 {
 		_, err := r.db.Exec(ctx, `INSERT INTO deployments (
 			id, model_id, instance_id, status, runtime_config, runtime_ref, endpoint,
 			pinned, health, failure_stage, failure_reason, failed_at, idempotency_key,
-			created_at, ready_at, last_activity_at, updated_at, version)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,1)`, args...)
+			created_at, ready_at, last_activity_at, updated_at, runtime_key_ciphertext, runtime_key_version, version)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,1)`, args...)
 		switch {
 		case isUniqueViolation(err):
 			return deployment.Deployment{}, fmt.Errorf("insert deployment %q: %w", d.ID, ports.ErrVersionConflict)
@@ -95,8 +109,9 @@ func (r *DeploymentRepository) Save(ctx context.Context, d deployment.Deployment
 			endpoint = $7, pinned = $8, health = $9, failure_stage = $10, failure_reason = $11,
 			failed_at = $12, idempotency_key = $13, created_at = $14, ready_at = $15,
 			last_activity_at = GREATEST(last_activity_at, $16), updated_at = $17,
+			runtime_key_ciphertext = $18, runtime_key_version = $19,
 			version = version + 1
-		WHERE id = $1 AND version = $18`, append(args, d.Version)...)
+		WHERE id = $1 AND version = $20`, append(args, d.Version)...)
 	if err != nil {
 		return deployment.Deployment{}, fmt.Errorf("update deployment %q: %w", d.ID, err)
 	}
@@ -169,7 +184,7 @@ func (r *DeploymentRepository) Delete(ctx context.Context, id deployment.ID) err
 }
 
 func (r *DeploymentRepository) one(ctx context.Context, sql string, args ...any) (deployment.Deployment, error) {
-	d, err := scanDeployment(r.db.QueryRow(ctx, sql, args...))
+	d, err := r.scan(r.db.QueryRow(ctx, sql, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return deployment.Deployment{}, ports.ErrNotFound
 	}
@@ -187,7 +202,7 @@ func (r *DeploymentRepository) many(ctx context.Context, sql string, args ...any
 	defer rows.Close()
 	out := []deployment.Deployment{}
 	for rows.Next() {
-		d, err := scanDeployment(rows)
+		d, err := r.scan(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan deployment: %w", err)
 		}
@@ -199,7 +214,7 @@ func (r *DeploymentRepository) many(ctx context.Context, sql string, args ...any
 	return out, nil
 }
 
-func scanDeployment(row pgx.Row) (deployment.Deployment, error) {
+func (r *DeploymentRepository) scan(row pgx.Row) (deployment.Deployment, error) {
 	var (
 		d                    deployment.Deployment
 		id, modelID, status  string
@@ -208,12 +223,24 @@ func scanDeployment(row pgx.Row) (deployment.Deployment, error) {
 		runtimeCfg, endpoint []byte
 		stage, reason        pgtype.Text
 		failedAt, readyAt    pgtype.Timestamptz
+		keyCT                []byte
+		keyVersion           pgtype.Int2
 	)
 	err := row.Scan(&id, &modelID, &instanceID, &status, &runtimeCfg, &d.RuntimeRef, &endpoint,
 		&d.Pinned, &health, &stage, &reason, &failedAt, &d.IdempotencyKey, &d.Version,
-		&d.CreatedAt, &readyAt, &d.LastActivityAt, &d.UpdatedAt)
+		&d.CreatedAt, &readyAt, &d.LastActivityAt, &d.UpdatedAt, &keyCT, &keyVersion)
 	if err != nil {
 		return deployment.Deployment{}, err
+	}
+	if len(keyCT) > 0 {
+		if keyVersion.Int16 != runtimeKeyVersion {
+			return deployment.Deployment{}, fmt.Errorf("deployment %q: unknown runtime key version %d", id, keyVersion.Int16)
+		}
+		key, err := r.keys.open(id, keyCT)
+		if err != nil {
+			return deployment.Deployment{}, fmt.Errorf("deployment %q: %w", id, err)
+		}
+		d.RuntimeKey = deployment.RuntimeKey(key)
 	}
 	d.ID = deployment.ID(id)
 	d.ModelID = model.ID(modelID)

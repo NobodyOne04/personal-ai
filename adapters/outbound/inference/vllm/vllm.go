@@ -12,9 +12,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,8 +37,6 @@ const (
 
 // Config configures the runtime adapter.
 type Config struct {
-	// KeySecret derives per-deployment API keys. Required.
-	KeySecret string
 	// HFToken is passed to the container to download gated models. Optional.
 	HFToken      string
 	DefaultImage string
@@ -71,9 +66,6 @@ var _ ports.InferenceRuntime = (*Runtime)(nil)
 
 // New returns a runtime adapter.
 func New(cfg Config) (*Runtime, error) {
-	if len(cfg.KeySecret) < 24 {
-		return nil, errors.New("vllm: key secret must be at least 24 characters")
-	}
 	if cfg.DefaultImage == "" {
 		cfg.DefaultImage = DefaultImage
 	}
@@ -92,13 +84,6 @@ func New(cfg Config) (*Runtime, error) {
 		}}
 	}
 	return &Runtime{cfg: cfg, client: client}, nil
-}
-
-// apiKey derives the deployment's runtime credential.
-func (r *Runtime) apiKey(deploymentID string) string {
-	mac := hmac.New(sha256.New, []byte(r.cfg.KeySecret))
-	mac.Write([]byte("vllm-api-key:" + deploymentID))
-	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // settings is the parsed form of the opaque runtime map.
@@ -193,6 +178,9 @@ func (r *Runtime) Prepare(_ context.Context, spec ports.PrepareSpec) (compute.La
 	if spec.DeploymentID == "" {
 		return compute.LaunchSpec{}, errors.New("vllm: deployment id is required")
 	}
+	if len(spec.RuntimeKey) < 32 {
+		return compute.LaunchSpec{}, errors.New("vllm: a runtime key of at least 32 characters is required")
+	}
 	s, err := r.parseSettings(spec.Model, spec.Overrides)
 	if err == nil && strings.HasPrefix(spec.Model.Artifact, "-") {
 		err = errors.New("model artifact must not start with '-'")
@@ -231,7 +219,7 @@ func (r *Runtime) Prepare(_ context.Context, spec ports.PrepareSpec) (compute.La
 
 	// The key goes in the environment (vLLM reads VLLM_API_KEY), never in args,
 	// which providers tend to display.
-	env := map[string]string{"VLLM_API_KEY": r.apiKey(spec.DeploymentID)}
+	env := map[string]string{"VLLM_API_KEY": string(spec.RuntimeKey)}
 	if r.cfg.HFToken != "" {
 		env["HF_TOKEN"] = r.cfg.HFToken
 	}
@@ -517,6 +505,9 @@ func (r *Runtime) send(ctx context.Context, method string, target ports.RuntimeT
 	if target.Endpoint.URL == "" {
 		return nil, errors.New("no endpoint")
 	}
+	if target.Key == "" {
+		return nil, errors.New("no runtime key")
+	}
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -532,7 +523,7 @@ func (r *Runtime) send(ctx context.Context, method string, target ports.RuntimeT
 	for k, v := range target.Endpoint.Headers {
 		req.Header.Set(k, v)
 	}
-	req.Header.Set("Authorization", "Bearer "+r.apiKey(rf.DeploymentID))
+	req.Header.Set("Authorization", "Bearer "+string(target.Key))
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

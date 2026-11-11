@@ -13,12 +13,13 @@ import (
 	"time"
 
 	"personal-ai/core/domain/compute"
+	"personal-ai/core/domain/deployment"
 	"personal-ai/core/domain/inference"
 	"personal-ai/core/domain/model"
 	"personal-ai/core/ports"
 )
 
-const secret = "0123456789abcdef0123456789abcdef" // gitleaks:allow (fake test key)
+const key deployment.RuntimeKey = "0123456789abcdef0123456789abcdef" // gitleaks:allow (fake test key)
 
 func testModel() model.Model {
 	return model.Model{ID: "m1", Name: "M", Artifact: "org/m1",
@@ -29,7 +30,7 @@ func testModel() model.Model {
 
 func newRuntime(t *testing.T) *Runtime {
 	t.Helper()
-	r, err := New(Config{KeySecret: secret, HFToken: "hf", AllowExtraArgs: true})
+	r, err := New(Config{HFToken: "hf", AllowExtraArgs: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func newRuntime(t *testing.T) *Runtime {
 
 func TestPrepareBuildsLaunchSpec(t *testing.T) {
 	r := newRuntime(t)
-	ls, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: testModel(),
+	ls, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", RuntimeKey: key, Model: testModel(),
 		Overrides: map[string]any{"gpu_memory_utilization": 0.85}})
 	if err != nil {
 		t.Fatal(err)
@@ -53,29 +54,29 @@ func TestPrepareBuildsLaunchSpec(t *testing.T) {
 	if ls.Image != DefaultImage || !slices.Equal(ls.Ports, []int{8000}) {
 		t.Fatalf("spec = %+v", ls)
 	}
-	if ls.Env["VLLM_API_KEY"] != r.apiKey("d1") || ls.Env["HF_TOKEN"] != "hf" || strings.Contains(args, r.apiKey("d1")) {
+	if ls.Env["VLLM_API_KEY"] != string(key) || ls.Env["HF_TOKEN"] != "hf" || strings.Contains(args, string(key)) {
 		t.Fatal("key must be in env only")
 	}
-	if r.apiKey("d1") == r.apiKey("d2") {
-		t.Fatal("keys must be per deployment")
+	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: testModel()}); err == nil {
+		t.Fatal("a runtime key is required")
 	}
 
 	bad := testModel()
 	bad.Runtime = map[string]any{"bogus": 1, "port": "x"}
-	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: bad}); err == nil {
+	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", RuntimeKey: key, Model: bad}); err == nil {
 		t.Fatal("want error for unknown/invalid settings")
 	}
 }
 
 func TestPrepareRestrictsWhatCodeRuns(t *testing.T) {
-	r, err := New(Config{KeySecret: secret, AllowedImages: []string{"vllm/vllm-openai:v0.32.0"}})
+	r, err := New(Config{AllowedImages: []string{"vllm/vllm-openai:v0.32.0"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	prepare := func(runtime, overrides map[string]any) error {
 		m := testModel()
 		m.Runtime = runtime
-		_, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: m, Overrides: overrides})
+		_, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", RuntimeKey: key, Model: m, Overrides: overrides})
 		return err
 	}
 	for name, tc := range map[string]struct {
@@ -99,7 +100,7 @@ func TestPrepareRestrictsWhatCodeRuns(t *testing.T) {
 
 	m := testModel()
 	m.Artifact = "--worker-cls=evil.Worker"
-	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", Model: m}); err == nil {
+	if _, err := r.Prepare(context.Background(), ports.PrepareSpec{DeploymentID: "d1", RuntimeKey: key, Model: m}); err == nil {
 		t.Error("artifact starting with '-' must be refused")
 	}
 
@@ -166,18 +167,18 @@ func target(t *testing.T, r *Runtime, url string) ports.RuntimeTarget {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ports.RuntimeTarget{Endpoint: compute.Endpoint{URL: url}, Ref: ref}
+	return ports.RuntimeTarget{Endpoint: compute.Endpoint{URL: url}, Ref: ref, Key: key}
 }
 
 func TestHealth(t *testing.T) {
 	r := newRuntime(t)
-	srv := fakeVLLM(t, r.apiKey("d1"), true)
+	srv := fakeVLLM(t, string(key), true)
 	h, err := r.Health(context.Background(), target(t, r, srv.URL))
 	if err != nil || !h.Ready || !h.ModelLoaded {
 		t.Fatalf("health = %+v, %v", h, err)
 	}
 
-	notLoaded := fakeVLLM(t, r.apiKey("d1"), false)
+	notLoaded := fakeVLLM(t, string(key), false)
 	if h, _ := r.Health(context.Background(), target(t, r, notLoaded.URL)); h.ModelLoaded {
 		t.Fatal("model must not be reported loaded")
 	}
@@ -191,7 +192,7 @@ func TestHealth(t *testing.T) {
 
 func TestChat(t *testing.T) {
 	r := newRuntime(t)
-	srv := fakeVLLM(t, r.apiKey("d1"), true)
+	srv := fakeVLLM(t, string(key), true)
 	resp, err := r.Chat(context.Background(), target(t, r, srv.URL), inference.Request{ModelID: "m1",
 		Messages: []inference.Message{{Role: inference.RoleUser, Content: "hi"}}})
 	if err != nil {
@@ -204,7 +205,7 @@ func TestChat(t *testing.T) {
 
 func TestChatStream(t *testing.T) {
 	r := newRuntime(t)
-	srv := fakeVLLM(t, r.apiKey("d1"), true)
+	srv := fakeVLLM(t, string(key), true)
 	ch, err := r.ChatStream(context.Background(), target(t, r, srv.URL), inference.Request{ModelID: "m1",
 		Messages: []inference.Message{{Role: inference.RoleUser, Content: "hi"}}})
 	if err != nil {

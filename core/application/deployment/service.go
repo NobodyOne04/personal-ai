@@ -2,6 +2,8 @@ package deploymentapp
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -142,8 +144,9 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (deployment.Dep
 		return deployment.Deployment{}, fmt.Errorf("%w: %q", ErrModelInactive, m.ID)
 	}
 	id := deployment.ID(s.IDs.NewID())
+	key := newRuntimeKey()
 	// Validate everything that can be validated before spending money.
-	if _, err := s.Runtime.Prepare(ctx, ports.PrepareSpec{DeploymentID: string(id), Model: m, Overrides: req.RuntimeConfig}); err != nil {
+	if _, err := s.Runtime.Prepare(ctx, ports.PrepareSpec{DeploymentID: string(id), RuntimeKey: key, Model: m, Overrides: req.RuntimeConfig}); err != nil {
 		return deployment.Deployment{}, fmt.Errorf("%w: %w", deployment.ErrInvalid, err)
 	}
 	caps, err := s.Compute.Capabilities(ctx)
@@ -165,6 +168,7 @@ func (s *Service) Create(ctx context.Context, req CreateRequest) (deployment.Dep
 	}
 	d.Pinned = req.Pinned
 	d.RuntimeConfig = req.RuntimeConfig
+	d.RuntimeKey = key
 	d, err = s.Deployments.Save(ctx, d)
 	if err != nil {
 		return deployment.Deployment{}, fmt.Errorf("save deployment: %w", err)
@@ -260,7 +264,18 @@ func (s *Service) Launch(ctx context.Context, id deployment.ID) error {
 	if err != nil {
 		return s.fail(ctx, id, fmt.Errorf("get model: %w", err))
 	}
-	launch, err := s.Runtime.Prepare(ctx, ports.PrepareSpec{DeploymentID: string(id), Model: m, Overrides: d.RuntimeConfig})
+	if d.RuntimeKey == "" {
+		// Recorded before ADR 0009 keys existed: give it one before launching.
+		if d, err = s.update(ctx, id, func(d *deployment.Deployment) error {
+			if d.RuntimeKey == "" {
+				d.RuntimeKey = newRuntimeKey()
+			}
+			return nil
+		}); err != nil {
+			return err
+		}
+	}
+	launch, err := s.Runtime.Prepare(ctx, ports.PrepareSpec{DeploymentID: string(id), RuntimeKey: d.RuntimeKey, Model: m, Overrides: d.RuntimeConfig})
 	if err != nil {
 		return s.fail(ctx, id, fmt.Errorf("prepare runtime: %w", err))
 	}
@@ -344,7 +359,7 @@ func (s *Service) Launch(ctx context.Context, id deployment.ID) error {
 	}
 
 	// 4. Wait for the model to load.
-	if err := s.waitForModel(ctx, ports.RuntimeTarget{Endpoint: endpoint, Ref: ref}); err != nil {
+	if err := s.waitForModel(ctx, ports.RuntimeTarget{Endpoint: endpoint, Ref: ref, Key: d.RuntimeKey}); err != nil {
 		return s.failUnlessCancelled(ctx, id, err)
 	}
 
@@ -573,7 +588,7 @@ var errNoop = errors.New("no change")
 // instance (must succeed).
 func (s *Service) releaseCompute(ctx context.Context, d deployment.Deployment) error {
 	if d.Endpoint != nil && d.RuntimeRef != "" {
-		if err := s.Runtime.Release(ctx, ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef}); err != nil {
+		if err := s.Runtime.Release(ctx, ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef, Key: d.RuntimeKey}); err != nil {
 			s.Logger.Warn("runtime release failed", "deployment_id", d.ID, "error", err)
 		}
 	}
@@ -689,6 +704,8 @@ func (s *Service) Restart(ctx context.Context, id deployment.ID) (deployment.Dep
 		}
 		// New compute needs a new key: the old one identifies released compute.
 		d.IdempotencyKey = s.IDs.NewID()
+		// And a new runtime credential (ADR 0009), so an old key opens nothing.
+		d.RuntimeKey = newRuntimeKey()
 		return nil
 	})
 	if err != nil {
@@ -746,7 +763,7 @@ func (s *Service) CheckHealth(ctx context.Context, id deployment.ID) (deployment
 	if (d.Status != deployment.Ready && d.Status != deployment.Unhealthy) || d.Endpoint == nil {
 		return d, fmt.Errorf("%w: status %s", ErrNotServing, d.Status)
 	}
-	h, err := s.Runtime.Health(ctx, ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef})
+	h, err := s.Runtime.Health(ctx, ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef, Key: d.RuntimeKey})
 	healthy := err == nil && h.ModelLoaded
 	d, err = s.update(ctx, id, func(cur *deployment.Deployment) error {
 		switch {
@@ -853,7 +870,7 @@ func Target(d deployment.Deployment) (ports.RuntimeTarget, error) {
 	if d.Endpoint == nil {
 		return ports.RuntimeTarget{}, deployment.ErrNoEndpoint
 	}
-	return ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef}, nil
+	return ports.RuntimeTarget{Endpoint: *d.Endpoint, Ref: d.RuntimeRef, Key: d.RuntimeKey}, nil
 }
 
 // ---- reconciliation ----
@@ -1006,4 +1023,11 @@ func (s *Service) publish(ctx context.Context, t ports.EventType, d deployment.D
 	if err != nil {
 		s.Logger.Debug("event publish failed", "type", t, "error", err)
 	}
+}
+
+// newRuntimeKey returns a random 256-bit runtime credential (ADR 0009).
+func newRuntimeKey() deployment.RuntimeKey {
+	var b [32]byte
+	_, _ = rand.Read(b[:]) // crypto/rand.Read never returns an error
+	return deployment.RuntimeKey(hex.EncodeToString(b[:]))
 }

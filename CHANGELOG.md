@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- Each deployment gets a random runtime key per launch, stored AES-256-GCM encrypted (migration 0002); the HMAC-derived keys are gone. Deployments started before this change must be restarted (ADR 0009)
 - Config is YAML (`config.example.yaml`, Kubernetes `config.yaml`), read with `go.yaml.in/yaml/v3`; existing JSON configs still parse but should be renamed (ADR 0010)
 - ADRs 0001 (hexagonal core), 0003 (RunPod offerings) and 0006 (two token scopes) accepted
 - ADR 0007 (JSON config) rejected; ADR 0010 accepted: YAML config, secrets still env-only (not built yet)

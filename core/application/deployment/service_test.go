@@ -223,6 +223,9 @@ func TestRestart(t *testing.T) {
 	if *second.InstanceID == *first.InstanceID || second.IdempotencyKey == first.IdempotencyKey {
 		t.Fatal("restart must use new compute and a new idempotency key")
 	}
+	if first.RuntimeKey == "" || len(first.RuntimeKey) != 64 || second.RuntimeKey == first.RuntimeKey {
+		t.Fatal("each launch needs its own random runtime key (ADR 0009)")
+	}
 	if e.compute.Live() != 1 {
 		t.Fatalf("live instances = %d", e.compute.Live())
 	}

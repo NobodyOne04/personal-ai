@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -75,7 +76,10 @@ func TestRepositories(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()
 	models := NewModelRepository(pool, nil)
-	deps := NewDeploymentRepository(pool)
+	deps, err := NewDeploymentRepository(pool, "0123456789abcdef0123456789abcdef") // gitleaks:allow (fake test secret)
+	if err != nil {
+		t.Fatal(err)
+	}
 	use := NewUsageRepository(pool)
 	prefs := NewPreferenceRepository(pool)
 
@@ -109,6 +113,7 @@ func TestRepositories(t *testing.T) {
 	// Deployments with optimistic locking.
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	d, _ := deployment.New("d1", "m1", "key-1", now)
+	d.RuntimeKey = "runtime-key-0123456789abcdef0123456789"
 	saved, err := deps.Save(ctx, d)
 	if err != nil || saved.Version != 1 {
 		t.Fatalf("insert: %+v %v", saved, err)
@@ -123,6 +128,17 @@ func TestRepositories(t *testing.T) {
 	updated, err := deps.Save(ctx, saved)
 	if err != nil || updated.Version != 2 || *updated.InstanceID != "inst-1" || updated.Endpoint.URL != "https://x" {
 		t.Fatalf("update: %+v %v", updated, err)
+	}
+	// ADR 0009: the key round-trips but is stored only encrypted.
+	if updated.RuntimeKey != d.RuntimeKey {
+		t.Fatal("runtime key must round-trip")
+	}
+	var stored []byte
+	if err := pool.QueryRow(ctx, `SELECT runtime_key_ciphertext FROM deployments WHERE id = 'd1'`).Scan(&stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) == 0 || bytes.Contains(stored, []byte(d.RuntimeKey)) {
+		t.Fatal("runtime key must be stored encrypted")
 	}
 	if _, err := deps.Save(ctx, saved); !errors.Is(err, ports.ErrVersionConflict) {
 		t.Fatalf("stale update: want conflict, got %v", err)

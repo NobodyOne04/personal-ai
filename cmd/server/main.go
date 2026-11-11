@@ -112,7 +112,10 @@ func run(ctx context.Context, args []string, getenv func(string) string, stderr 
 		logger.Info("database migrated", "versions", applied)
 	}
 	modelRepo := postgres.NewModelRepository(pool, logger)
-	depRepo := postgres.NewDeploymentRepository(pool)
+	depRepo, err := postgres.NewDeploymentRepository(pool, cfg.Secrets.RuntimeKeySecret)
+	if err != nil {
+		return err
+	}
 	usageRepo := postgres.NewUsageRepository(pool)
 	prefRepo := postgres.NewPreferenceRepository(pool)
 
@@ -129,7 +132,7 @@ func run(ctx context.Context, args []string, getenv func(string) string, stderr 
 	if err != nil {
 		return err
 	}
-	runtime, err := vllm.New(vllm.Config{KeySecret: cfg.Secrets.RuntimeKeySecret, HFToken: cfg.Secrets.HFToken,
+	runtime, err := vllm.New(vllm.Config{HFToken: cfg.Secrets.HFToken,
 		DefaultImage: cfg.Runtime.Image, AllowedImages: cfg.Runtime.AllowedImages,
 		AllowTrustRemoteCode: cfg.Runtime.AllowTrustRemoteCode, AllowExtraArgs: cfg.Runtime.AllowExtraArgs})
 	if err != nil {

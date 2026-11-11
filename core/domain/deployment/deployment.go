@@ -8,6 +8,7 @@ package deployment
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"personal-ai/core/domain/compute"
@@ -16,6 +17,16 @@ import (
 
 // ID identifies a deployment.
 type ID string
+
+// RuntimeKey is the random credential protecting one deployment's runtime
+// (ADR 0009). Every formatting path is redacted so it cannot leak into logs.
+type RuntimeKey string
+
+const redactedKey = "[REDACTED]"
+
+func (RuntimeKey) String() string       { return redactedKey }
+func (RuntimeKey) GoString() string     { return redactedKey }
+func (RuntimeKey) LogValue() slog.Value { return slog.StringValue(redactedKey) }
 
 // Status is the lifecycle state of a deployment.
 type Status string
@@ -113,6 +124,9 @@ type Deployment struct {
 	Endpoint      *compute.Endpoint
 	// RuntimeRef is an opaque handle returned by the inference runtime.
 	RuntimeRef string
+	// RuntimeKey authenticates calls to the runtime. Generated per launch;
+	// persistence stores it encrypted.
+	RuntimeKey RuntimeKey
 
 	Pinned  bool
 	Health  Health

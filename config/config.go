@@ -186,7 +186,8 @@ type Secrets struct {
 	InferenceToken  string
 	RunPodAPIKey    string
 	TelegramToken   string
-	// RuntimeKeySecret derives per-deployment runtime API keys.
+	// RuntimeKeySecret encrypts the per-deployment runtime keys stored in the
+	// database (ADR 0009). Changing it makes stored keys unreadable.
 	RuntimeKeySecret string
 	// HFToken lets runtimes download gated models. Optional.
 	HFToken string
