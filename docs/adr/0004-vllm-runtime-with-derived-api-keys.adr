@@ -1,6 +1,6 @@
 # 0004. vLLM runtime with per-deployment API keys derived by HMAC
 
-- Status: Rejected (2026-11-11), replaced by [0009](0009-vllm-runtime-with-random-encrypted-keys.md)
+- Status: Rejected (2026-11-11), replaced by [0009](0009-vllm-runtime-with-random-encrypted-keys.adr)
 - Date: 2026-11-11
 
 > Rejected by the owner: per-deployment keys are to be random and stored encrypted (0009).
