@@ -4,7 +4,7 @@
 - Date: 2026-11-11
 
 > Rejected by the owner: per-deployment keys are to be random and stored encrypted (0009).
-> vLLM as the runtime is kept. The body below describes the code as it is until 0009 is built.
+> vLLM as the runtime is kept. Superseded in code by 0009.
 
 ## Context
 Each model runs in vLLM on a RunPod pod reachable through RunPod's public HTTPS proxy, so the runtime needs a credential, and storing one per deployment adds secret storage.

@@ -471,6 +471,9 @@ func (r *Runtime) Prepare(_ context.Context, spec ports.PrepareSpec) (compute.La
 	if _, bad := spec.Overrides["invalid"]; bad {
 		return compute.LaunchSpec{}, errors.New("invalid override")
 	}
+	if spec.RuntimeKey == "" {
+		return compute.LaunchSpec{}, errors.New("fake runtime: no runtime key")
+	}
 	return compute.LaunchSpec{Image: "img", Ports: []int{8000}}, nil
 }
 
@@ -483,7 +486,10 @@ func (r *Runtime) Initialize(_ context.Context, spec ports.InitSpec) (string, er
 	return "ref-" + spec.DeploymentID, nil
 }
 
-func (r *Runtime) Health(context.Context, ports.RuntimeTarget) (ports.RuntimeHealth, error) {
+func (r *Runtime) Health(_ context.Context, t ports.RuntimeTarget) (ports.RuntimeHealth, error) {
+	if t.Key == "" {
+		return ports.RuntimeHealth{}, errors.New("fake runtime: no runtime key")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return ports.RuntimeHealth{Ready: r.Loaded, ModelLoaded: r.Loaded}, nil
@@ -491,7 +497,10 @@ func (r *Runtime) Health(context.Context, ports.RuntimeTarget) (ports.RuntimeHea
 
 func (r *Runtime) Models(context.Context, ports.RuntimeTarget) ([]string, error) { return nil, nil }
 
-func (r *Runtime) Chat(_ context.Context, _ ports.RuntimeTarget, req inference.Request) (inference.Response, error) {
+func (r *Runtime) Chat(_ context.Context, t ports.RuntimeTarget, req inference.Request) (inference.Response, error) {
+	if t.Key == "" {
+		return inference.Response{}, errors.New("fake runtime: no runtime key")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Requests = append(r.Requests, req)
@@ -502,7 +511,10 @@ func (r *Runtime) Chat(_ context.Context, _ ports.RuntimeTarget, req inference.R
 		FinishReason: inference.FinishStop, Usage: r.Usage}, nil
 }
 
-func (r *Runtime) ChatStream(ctx context.Context, _ ports.RuntimeTarget, req inference.Request) (<-chan inference.Chunk, error) {
+func (r *Runtime) ChatStream(ctx context.Context, t ports.RuntimeTarget, req inference.Request) (<-chan inference.Chunk, error) {
+	if t.Key == "" {
+		return nil, errors.New("fake runtime: no runtime key")
+	}
 	r.mu.Lock()
 	r.Requests = append(r.Requests, req)
 	if r.ChatErr != nil {

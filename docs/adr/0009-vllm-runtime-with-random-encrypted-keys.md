@@ -4,8 +4,7 @@
 - Date: 2026-11-11
 - Replaces: [0004](0004-vllm-runtime-with-derived-api-keys.md) (rejected)
 
-> Accepted by the owner on 2026-11-11. **Not implemented yet**: the code still derives keys by
-> HMAC (0004). Build this before the first real launch (`CLAUDE.md`).
+> Accepted by the owner on 2026-11-11. Implemented 2026-11-11 (migration `0002_runtime_keys.sql`).
 
 ## Context
 Each model runs in vLLM on a RunPod pod behind RunPod's public HTTPS proxy, so every runtime

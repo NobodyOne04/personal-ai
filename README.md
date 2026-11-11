@@ -133,7 +133,7 @@ that the database (and the API) is authoritative. Use `server -sync-models` to o
 | `PERSONAL_AI_MANAGEMENT_TOKEN` | server, CLI, bot (optional) | yes, ≥ 24 chars |
 | `PERSONAL_AI_INFERENCE_TOKEN` | server, CLI, bot | yes, ≥ 24 chars, different from the management token |
 | `PERSONAL_AI_RUNPOD_API_KEY` | server | yes |
-| `PERSONAL_AI_RUNTIME_KEY_SECRET` | server | yes, ≥ 24 chars (derives per-deployment vLLM keys) |
+| `PERSONAL_AI_RUNTIME_KEY_SECRET` | server | yes, ≥ 24 chars (encrypts the per-deployment vLLM keys stored in the database; changing it means restarting deployments) |
 | `PERSONAL_AI_HF_TOKEN` | server | no (gated Hugging Face models) |
 | `PERSONAL_AI_TELEGRAM_TOKEN` | bot | yes for the bot |
 | `PERSONAL_AI_API_URL` | CLI, bot | no (default `http://localhost:8080`) |
@@ -268,8 +268,9 @@ make docker-build      # 25 MB distroless image containing server, telegram and 
 
 - Secrets are accepted only from the environment; they are redacted in logs and never written to the database.
 - Tokens are compared as SHA-256 digests in constant time. Use long random values and rotate them by restarting.
-- Each GPU deployment gets its own vLLM API key derived from `PERSONAL_AI_RUNTIME_KEY_SECRET`; the gateway is the
-  only client that knows it.
+- Each GPU deployment gets its own random vLLM API key, new on every launch and restart, stored in PostgreSQL
+  encrypted (AES-256-GCM) with `PERSONAL_AI_RUNTIME_KEY_SECRET` (ADR 0009); the gateway is the only client that
+  knows it. Deployments started before this change have no key: restart them.
 - Always put the server behind TLS (the production overlay's Ingress) when it is reachable from the internet.
 
 ## License

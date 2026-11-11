@@ -330,7 +330,7 @@ func (s *Service) record(ctx context.Context, d deployment.Deployment, req infer
 }
 
 func target(d deployment.Deployment) ports.RuntimeTarget {
-	t := ports.RuntimeTarget{Ref: d.RuntimeRef}
+	t := ports.RuntimeTarget{Ref: d.RuntimeRef, Key: d.RuntimeKey}
 	if d.Endpoint != nil {
 		t.Endpoint = *d.Endpoint
 	}

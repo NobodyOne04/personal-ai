@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"personal-ai/core/domain/compute"
+	"personal-ai/core/domain/deployment"
 	"personal-ai/core/domain/inference"
 	"personal-ai/core/domain/model"
 )
@@ -14,14 +15,16 @@ import (
 type RuntimeTarget struct {
 	Endpoint compute.Endpoint
 	Ref      string
+	// Key authenticates calls to the runtime.
+	Key deployment.RuntimeKey
 }
 
 // PrepareSpec is the input to InferenceRuntime.Prepare.
 type PrepareSpec struct {
-	// DeploymentID lets the runtime derive per-deployment settings such as a
-	// credential protecting the runtime's port.
 	DeploymentID string
-	Model        model.Model
+	// RuntimeKey is the credential the runtime must require on its port.
+	RuntimeKey deployment.RuntimeKey
+	Model      model.Model
 	// Overrides replace the model's runtime settings for this deployment.
 	Overrides map[string]any
 }

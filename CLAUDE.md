@@ -13,11 +13,9 @@ through this list first; don't deploy until each item is done or the owner expli
    provider's CA in `sslrootcert` if it isn't publicly trusted); confirm the server connects.
 3. **SEC-006**: after the first deploy, check the NetworkPolicies and rate limit: bot reaches the
    server, server reaches PostgreSQL and RunPod, ingress still streams.
-4. **ADR 0009** (random per-deployment runtime keys, stored encrypted) is accepted but not built:
-   implement it.
-5. Config: models with a custom `image`, `trust_remote_code` or `extra_args` need
+4. Config: models with a custom `image`, `trust_remote_code` or `extra_args` need
    `runtime.allowed_images` / `allow_trust_remote_code` / `allow_extra_args`.
-6. Start with one small model and a low `scheduling.max_active`, and watch the logs (ARCHITECTURE.md §10).
+5. Start with one small model and a low `scheduling.max_active`, and watch the logs (ARCHITECTURE.md §10).
 Update the security report statuses as items are verified, then remove this section.
 
 ## Commands
@@ -38,7 +36,9 @@ Update the security report statuses as items are verified, then remove this sect
 
 ## Conventions
 - Import rules in ARCHITECTURE.md §1 are enforced by `internal/archtest`; the core never imports adapters, `cmd` or `config`.
-- Secrets only from env, never in config files or logs; responses never expose runtime endpoints or keys.
+- Secrets only from env, never in config files or logs; runtime keys are random per launch,
+  stored only encrypted (ADR 0009), and `deployment.RuntimeKey` redacts itself; responses never
+  expose runtime endpoints or keys.
 - Significant architecture changes get an ADR in `docs/adr/` (`adr-manager`); only the owner accepts one.
 - The security report is updated in place after each audit (`security-audit`); never drop old findings.
 - Exactly one server replica: it owns the scheduler, reconciler and in-memory activity counts.
