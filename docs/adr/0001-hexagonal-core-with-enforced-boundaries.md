@@ -1,10 +1,9 @@
 # 0001. Hexagonal core with import boundaries enforced by a test
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-11
 
-> Recorded from the implemented code and ARCHITECTURE.md. The design notes say these calls were
-> delegated during implementation; this record is not approved until the owner accepts it.
+> Accepted by the owner on 2026-11-11.
 
 ## Context
 The platform talks to several replaceable technologies (RunPod, vLLM, PostgreSQL, Telegram, HTTP). Business rules (deployment lifecycle, idle scheduling, cost accounting) must stay testable without any of them.

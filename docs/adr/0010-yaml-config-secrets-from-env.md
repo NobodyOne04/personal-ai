@@ -1,0 +1,38 @@
+# 0010. YAML config file, secrets only from the environment
+
+- Status: Accepted
+- Date: 2026-11-11
+- Replaces: [0007](0007-json-config-secrets-from-env.md) (rejected)
+
+> Accepted by the owner on 2026-11-11. **Not implemented yet**: the loader still reads JSON (0007).
+
+## Context
+0007 chose JSON only because the build sandbox could not download a YAML module. That no longer
+holds (the project already fetches `pgx`). The config holds offerings, models and policies that
+the owner edits by hand and wants to comment.
+
+## Decision
+- The config file is YAML, read with `go.yaml.in/yaml/v3` (the maintained successor of the
+  archived `gopkg.in/yaml.v3`). Unknown keys are rejected (`KnownFields(true)`).
+- The config structs already carry `yaml` tags and `config.Duration` implements
+  `encoding.TextUnmarshaler`, so only the file reader (`readFile`) changes.
+- Example and Kubernetes configs move to `config.yaml`.
+- Secrets stay environment-only (`PERSONAL_AI_*`), never in the config file or ConfigMap
+  (unchanged from 0007).
+
+## Alternatives
+- Keep JSON (0007): no comments, harder to edit by hand. Rejected by the owner.
+- TOML: another format and library for no gain over YAML.
+- `gopkg.in/yaml.v3`: archived, no fixes.
+
+## Rationale
+Comments and readable multi-line config; the cost is one small, maintained dependency.
+
+## Consequences
+- Positive: commented, hand-editable config.
+- Negative: one more dependency (Dependabot tracks it); YAML pitfalls (indentation, implicit
+  types such as `no` or `0755`), mitigated by typed structs and rejecting unknown keys; existing
+  `config.json` files must be converted (JSON is mostly valid YAML, so they still parse).
+
+## References
+ADR 0007; `config/config.go`; `deployments/kubernetes/*/config.json`.

@@ -1,10 +1,10 @@
 # 0004. vLLM runtime with per-deployment API keys derived by HMAC
 
-- Status: Proposed
+- Status: Rejected (2026-11-11), replaced by [0009](0009-vllm-runtime-with-random-encrypted-keys.md)
 - Date: 2026-11-11
 
-> Recorded from the implemented code and ARCHITECTURE.md. The design notes say these calls were
-> delegated during implementation; this record is not approved until the owner accepts it.
+> Rejected by the owner: per-deployment keys are to be random and stored encrypted (0009).
+> vLLM as the runtime is kept. The body below describes the code as it is until 0009 is built.
 
 ## Context
 Each model runs in vLLM on a RunPod pod reachable through RunPod's public HTTPS proxy, so the runtime needs a credential, and storing one per deployment adds secret storage.
