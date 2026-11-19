@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Changed
+- pgx 5.12.0 → 5.13.0: fixes a panic in `Rows.Values` on malformed server responses (GHSA-w9rp-vfrh-q8vv)
 - `go.mod` lists `go.yaml.in/yaml/v3` as a direct dependency; `config` package doc describes the YAML file
 - ADRs rewritten in the new template (purpose, technical details, technologies and alternatives), with the implementation details
 - ADRs renamed to `docs/adr/NNNN-short-title.adr` (Markdown inside), links updated
